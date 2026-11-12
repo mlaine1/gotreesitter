@@ -1287,15 +1287,6 @@ func effectiveParseMergePerKeyCap(lang *Language, mergePerKeyCap int, incrementa
 		if !parseMaxMergePerKeyEnvConfigured() && mergePerKeyCap > 1 {
 			return 1
 		}
-	case "haskell":
-		// Haskell's layout-heavy grammar can retain redundant same-key module
-		// and declaration alternatives long enough for large generated sources
-		// to blow past practical parse bounds. One full-parse survivor preserves
-		// the current real-corpus C parity surface while making large files
-		// measurable; incremental reparses and explicit env overrides stay wide.
-		if !parseMaxMergePerKeyEnvConfigured() && mergePerKeyCap > 1 {
-			return 1
-		}
 	case "make":
 		// Makefile line-text ambiguities need both the open-repeat and
 		// close-repeat branches to preserve the C-compatible tree; one survivor

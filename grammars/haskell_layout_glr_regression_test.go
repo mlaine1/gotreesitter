@@ -22,6 +22,10 @@ import (
 //     same state. The zero-width loop guard masked the third one, so the
 //     scanner read a layout semicolon and the next declaration became
 //     arguments of the last expression.
+//   - typed and record patterns: the full-parse merge cap of one dropped the
+//     pattern reading that C keeps as a second link on a merged version. The
+//     equation became a top splice with an ERROR, or the whole header was
+//     dropped without one.
 func TestHaskellLayoutAndPatternForksMatchC(t *testing.T) {
 	entry := grammars.DetectLanguageByName("haskell")
 	if entry == nil {
@@ -45,6 +49,16 @@ func TestHaskellLayoutAndPatternForksMatchC(t *testing.T) {
 			name:   "multi-line signature ends at column one",
 			source: "noOverlaps xs  = and [ verts a `notOverlap` verts b\n                     ]\nnoOverflows :: (Integral b, Integral c) =>\n  (forall a. Integral a => a -> a -> a) -> b -> c -> Bool\nnoOverflows op a b = toInteger (a `op` fromIntegral b) == toInteger a `op` toInteger b\n",
 			want:   "(haskell (declarations (function (variable) (patterns (variable)) (match (apply (variable) (list (infix (apply (variable) (variable)) (infix_id (variable)) (apply (variable) (variable))))))) (signature (variable) (context (tuple (apply (name) (variable)) (apply (name) (variable))) (function (parens (forall (quantified_variables (variable)) (context (apply (name) (variable)) (function (variable) (function (variable) (variable)))))) (function (variable) (function (variable) (name)))))) (function (variable) (patterns (variable) (variable) (variable)) (match (infix (apply (variable) (parens (infix (variable) (infix_id (variable)) (apply (variable) (variable))))) (operator) (infix (apply (variable) (variable)) (infix_id (variable)) (apply (variable) (variable))))))))",
+		},
+		{
+			name:   "typed pattern argument",
+			source: "module P where\nprop_a (x :: T) = f x == x\ng y = y\n",
+			want:   "(haskell (header (module (module_id))) (declarations (function (variable) (patterns (parens (signature (variable) (name)))) (match (infix (apply (variable) (variable)) (operator) (variable)))) (function (variable) (patterns (variable)) (match (variable)))))",
+		},
+		{
+			name:   "qualified record pattern in case alternative",
+			source: "module M where\nf cs = case cs of\n  (P.C{ P.n = n }:_) -> Just n\n",
+			want:   "(haskell (header (module (module_id))) (declarations (function (variable) (patterns (variable)) (match (case (variable) (alternatives (alternative (parens (infix (record (qualified (module (module_id)) (constructor)) (field_pattern (qualified (module (module_id)) (field_name (variable))) (variable))) (constructor_operator) (wildcard))) (match (apply (constructor) (variable))))))))))",
 		},
 		{
 			name:   "three layout ends at one byte",

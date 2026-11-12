@@ -2915,8 +2915,10 @@ func TestEffectiveParseMergePerKeyCap(t *testing.T) {
 	if got := effectiveParseMergePerKeyCap(&Language{Name: "graphql"}, maxStacksPerMergeKey, false); got != 1 {
 		t.Fatalf("effectiveParseMergePerKeyCap(graphql, default, full) = %d, want 1", got)
 	}
-	if got := effectiveParseMergePerKeyCap(&Language{Name: "haskell"}, maxStacksPerMergeKey, false); got != 1 {
-		t.Fatalf("effectiveParseMergePerKeyCap(haskell, default, full) = %d, want 1", got)
+	// Haskell keeps the default: cap one dropped the typed-pattern and
+	// record-pattern readings that C keeps as links of a merged version.
+	if got := effectiveParseMergePerKeyCap(&Language{Name: "haskell"}, maxStacksPerMergeKey, false); got != maxStacksPerMergeKey {
+		t.Fatalf("effectiveParseMergePerKeyCap(haskell, default, full) = %d, want %d", got, maxStacksPerMergeKey)
 	}
 	if got := effectiveParseMergePerKeyCap(&Language{Name: "make"}, maxStacksPerMergeKey, false); got != 2 {
 		t.Fatalf("effectiveParseMergePerKeyCap(make, default, full) = %d, want 2", got)

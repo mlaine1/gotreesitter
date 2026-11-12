@@ -240,7 +240,6 @@
 2	parser_retry.go|switch|go
 1	parser_retry.go|switch|graphql
 2	parser_retry.go|switch|groovy
-1	parser_retry.go|switch|haskell
 1	parser_retry.go|switch|hcl
 2	parser_retry.go|switch|java
 2	parser_retry.go|switch|javascript

@@ -3943,11 +3943,22 @@ func (d *dfaTokenSource) nextExternalToken() (Token, bool) {
 	// C tree-sitter avoids this via its ERROR_STATE lex mode which causes
 	// the scanner to bail out via the __error_recovery sentinel. The Go
 	// runtime instead tracks tried indices per (position, state).
+	//
+	// The mask is only needed when the repeated scan cannot make progress.
+	// A zero-width token that changes the scanner state (a layout scanner
+	// popping one context per token while the parser returns to the same
+	// state) is not a loop, and C, which keeps the full valid set, reads it
+	// again. repeatMasked records the masked indices so the scan below can
+	// try the full set first.
+	var repeatMasked uint64
 	if !errorMode && d.language != nil && d.language.Name != "yaml" &&
 		d.lexer.pos == d.extZeroPos && d.state == d.extZeroState && len(d.extZeroTried) > 0 {
 		for i := range valid {
 			if i < len(d.extZeroTried) && d.extZeroTried[i] &&
 				!d.allowRepeatedZeroWidthExternalSymbol(d.language.ExternalSymbols[i]) {
+				if valid[i] && i < 64 && len(valid) <= 64 {
+					repeatMasked |= uint64(1) << uint(i)
+				}
 				valid[i] = false
 			}
 		}
@@ -3959,7 +3970,7 @@ func (d *dfaTokenSource) nextExternalToken() (Token, bool) {
 				break
 			}
 		}
-		if !anyValid {
+		if !anyValid && repeatMasked == 0 {
 			return Token{}, false
 		}
 	}
@@ -3993,7 +4004,12 @@ func (d *dfaTokenSource) nextExternalToken() (Token, bool) {
 	if errorMode {
 		errorStart = d.captureExternalScannerStateInto(&d.externalTokenStart)
 	}
-	if !d.runExternalScannerWithRetry(el, valid) {
+	if repeatMasked != 0 && d.scanRepeatedZeroWidthWithProgress(el, valid, repeatMasked) {
+		// The scanner produced a token from the full valid set and its
+		// state moved, so the masked rescan below is not needed.
+	} else if !anyValid {
+		return Token{}, false
+	} else if !d.runExternalScannerWithRetry(el, valid) {
 		if d.isBashGenerated {
 			if tok, ok := d.bashGeneratedSyntheticExternalLiteral(valid); ok {
 				if DebugDFA.Load() {
@@ -5159,6 +5175,43 @@ func (d *dfaTokenSource) externalSymbolIndex(sym Symbol) int {
 		}
 	}
 	return -1
+}
+
+// scanRepeatedZeroWidthWithProgress runs the external scanner with the full
+// valid set at a position where the zero-width loop guard masked symbols
+// already produced there (the masked bits of valid). It keeps the result when
+// the scanner accepted and either the token is not a repeat of a tried
+// zero-width symbol or the scanner state changed during the scan, which is
+// progress the guard does not need to stop. Otherwise it restores the
+// scanner state and the lexer and returns false, so the caller scans with
+// the masked set as before. valid is masked again on every return.
+func (d *dfaTokenSource) scanRepeatedZeroWidthWithProgress(el *ExternalLexer, valid []bool, masked uint64) bool {
+	for i := range valid {
+		if masked&(uint64(1)<<uint(i)) != 0 {
+			valid[i] = true
+		}
+	}
+	defer func() {
+		for i := range valid {
+			if masked&(uint64(1)<<uint(i)) != 0 {
+				valid[i] = false
+			}
+		}
+	}()
+	before := append(d.externalProbeScratch[:0], d.captureExternalScannerStateInto(&d.externalCompare)...)
+	d.externalProbeScratch = before
+	if d.runExternalScannerWithRetry(el, valid) {
+		if tok, ok := el.token(); ok {
+			idx := d.externalSymbolIndex(tok.Symbol)
+			repeat := int(tok.EndByte) <= d.lexer.pos && idx >= 0 && idx < len(d.extZeroTried) && d.extZeroTried[idx]
+			if !repeat || !d.externalScannerStateMatches(before) {
+				return true
+			}
+		}
+	}
+	d.restoreExternalScannerState(before)
+	el.reset(d.lexer.source, d.lexer.pos, d.lexer.row, d.lexer.col)
+	return false
 }
 
 func (d *dfaTokenSource) trackZeroWidthExternalToken(tok *Token) {

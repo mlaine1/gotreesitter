@@ -17,6 +17,11 @@ import (
 //     semicolon, and drops it. The engine used to skip the zero-width layout
 //     token on that stack, so the version ran past the declaration boundary,
 //     read `type` as a variable, and won.
+//   - repeated layout ends: closing three nested do blocks emits three
+//     zero-width layout ends at one byte while the parser returns to the
+//     same state. The zero-width loop guard masked the third one, so the
+//     scanner read a layout semicolon and the next declaration became
+//     arguments of the last expression.
 func TestHaskellLayoutAndPatternForksMatchC(t *testing.T) {
 	entry := grammars.DetectLanguageByName("haskell")
 	if entry == nil {
@@ -40,6 +45,11 @@ func TestHaskellLayoutAndPatternForksMatchC(t *testing.T) {
 			name:   "multi-line signature ends at column one",
 			source: "noOverlaps xs  = and [ verts a `notOverlap` verts b\n                     ]\nnoOverflows :: (Integral b, Integral c) =>\n  (forall a. Integral a => a -> a -> a) -> b -> c -> Bool\nnoOverflows op a b = toInteger (a `op` fromIntegral b) == toInteger a `op` toInteger b\n",
 			want:   "(haskell (declarations (function (variable) (patterns (variable)) (match (apply (variable) (list (infix (apply (variable) (variable)) (infix_id (variable)) (apply (variable) (variable))))))) (signature (variable) (context (tuple (apply (name) (variable)) (apply (name) (variable))) (function (parens (forall (quantified_variables (variable)) (context (apply (name) (variable)) (function (variable) (function (variable) (variable)))))) (function (variable) (function (variable) (name)))))) (function (variable) (patterns (variable) (variable) (variable)) (match (infix (apply (variable) (parens (infix (variable) (infix_id (variable)) (apply (variable) (variable))))) (operator) (infix (apply (variable) (variable)) (infix_id (variable)) (apply (variable) (variable))))))))",
+		},
+		{
+			name:   "three layout ends at one byte",
+			source: "\n        u $ do\n            s $ do\n                g\n                r $ do\n                        (a)\n                        (f)\n    m t = m t\n",
+			want:   "(haskell (declarations (top_splice (infix (variable) (operator) (do (exp (infix (variable) (operator) (do (exp (variable)) (exp (infix (variable) (operator) (do (exp (parens (variable))) (exp (parens (variable)))))))))))) (function (variable) (patterns (variable)) (match (apply (variable) (variable))))))",
 		},
 		{
 			name:   "empty input",

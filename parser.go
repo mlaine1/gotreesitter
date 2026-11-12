@@ -6905,6 +6905,15 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 						dts.externalScannerStateMatches(dts.externalPreScanPayload) &&
 						p.glrSiblingAcceptsLookahead(stacks, s, tok) {
 						s.dead = true
+					} else if tok.ExternalScannerToken && len(stacks) > 1 &&
+						p.glrSiblingAcceptsLookahead(stacks, s, tok) &&
+						p.stackOwnExternalLexRejects(source, dts, currentState, tok) {
+						// C lexes this version on its own and reads a token
+						// it has no action for, so the version errors while
+						// its sibling parses on. Skipping the marker instead
+						// would let the version run past a layout boundary
+						// it never saw (haskell F87).
+						s.dead = true
 					} else {
 						consumeCurrentToken(s)
 					}

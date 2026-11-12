@@ -6264,6 +6264,33 @@ func (p *Parser) relexTokenForStackLexState(
 	return p.relexZeroWidthExternalTokenForStackLexState(source, dts, s, state, tok, nodeCount, arena, scratch, trackChildErrors, rescueBudget)
 }
 
+// stackOwnExternalLexRejects reports whether the external scanner, run for
+// this stack's own lex mode from the scanner state before the shared token,
+// returns a token the stack's state has no action for.
+//
+// tree-sitter C lexes each version separately (ts_parser__lex, C/parser.c:
+// the external scanner gets the version's own valid symbols and the scanner
+// state of the version's last external token). A version whose own lex
+// yields a lookahead without an action reaches ts_parser__handle_error
+// (detect_error) and loses to an error-free sibling. This engine shares one
+// token across stacks; the caller uses this probe for a zero-width external
+// token that the stack cannot accept, to tell a stack that C would see fail
+// from a stack whose own lex could still continue. It returns false whenever
+// the probe cannot answer (no external lex state, scanner declines).
+func (p *Parser) stackOwnExternalLexRejects(source []byte, dts *dfaTokenSource, state StateID, tok Token) bool {
+	if dts == nil || p.language == nil || dts.language != p.language {
+		return false
+	}
+	probed, ok := dts.probeExternalTokenForParseState(source, state, tok)
+	if p.glrTrace {
+		fmt.Printf("  OWN-EXT-LEX state=%d tok=%d [%d|%d-%d] -> sym=%d [%d-%d] ok=%v\n", state, tok.Symbol, tok.ExternalScannerStartByte, tok.StartByte, tok.EndByte, probed.Symbol, probed.StartByte, probed.EndByte, ok)
+	}
+	if !ok {
+		return false
+	}
+	return !p.stateHasActionForSymbol(state, probed.Symbol)
+}
+
 // relexZeroWidthExternalTokenForStackLexState is the zero-width-external
 // rescue described in relexTokenForStackLexState's doc above (the perl
 // `_NONASSOC` witness). It probes the external scanner from the shared

@@ -29,13 +29,13 @@ type dfaTokenSource struct {
 	hasKeywordState          []bool
 	externalValidByState     [][]uint16
 	externalValidMaskByState []uint64
-	externalPayload          any
-	externalValid            []bool
-	externalSnapshot         []byte
-	externalRetrySnap        []byte
-	externalTokenStart       []byte
-	externalTokenEnd         []byte
-	externalCompare          []byte
+	externalPayload    any
+	externalValid      []bool
+	externalSnapshot   []byte
+	externalRetrySnap  []byte
+	externalTokenStart []byte
+	externalTokenEnd   []byte
+	externalCompare    []byte
 	// externalPreScanPayload is the scanner payload as of the start of the
 	// current shared token, captured whenever Next produces it inside a GLR
 	// fork (len(glrStates) > 1), regardless of whether the language
@@ -4868,7 +4868,64 @@ func (d *dfaTokenSource) probeZeroWidthExternalTokenForLexState(source []byte, l
 	if int(lexState) >= len(d.language.ExternalLexStates) {
 		return Token{}, externalScannerCheckpoint{}, false
 	}
-	row := d.language.ExternalLexStates[lexState]
+	return d.probeExternalTokenWithValidSymbols(source, d.language.ExternalLexStates[lexState], tok, false)
+}
+
+// probeExternalTokenForParseState is probeZeroWidthExternalTokenForLexState
+// keyed by parse state. It uses the language's ts_external_scanner_states row
+// when the artifact carries one. Otherwise it uses the row this token source
+// already derives from the parse table for its shared lex (the external
+// tokens with an action in the state), so the probe asks the scanner the same
+// question the shared lex asks for a single-state frontier. It returns false
+// when the state has no valid external token: C then skips the external
+// scanner for the version (ts_parser__lex, C/parser.c).
+func (d *dfaTokenSource) probeExternalTokenForParseState(source []byte, state StateID, tok Token) (Token, bool) {
+	if d == nil || d.language == nil || d.language.ExternalScanner == nil || int(state) >= len(d.language.LexModes) {
+		return Token{}, false
+	}
+	if len(d.language.ExternalLexStates) > 0 {
+		els := d.language.LexModes[state].ExternalLexState
+		if els == 0 {
+			return Token{}, false
+		}
+		probed, _, ok := d.probeExternalTokenWithValidSymbols(source, d.language.ExternalLexStates[els], tok, true)
+		return probed, ok
+	}
+	if int(state) >= len(d.externalValidByState) || len(d.externalValidByState[state]) == 0 {
+		return Token{}, false
+	}
+	n := len(d.language.ExternalSymbols)
+	scratch := externalProbeValidPool.Get().(*[]bool)
+	if cap(*scratch) < n {
+		*scratch = make([]bool, n)
+	}
+	valid := (*scratch)[:n]
+	clear(valid)
+	for _, extIdx := range d.externalValidByState[state] {
+		if int(extIdx) < n {
+			valid[extIdx] = true
+		}
+	}
+	probed, _, ok := d.probeExternalTokenWithValidSymbols(source, valid, tok, true)
+	externalProbeValidPool.Put(scratch)
+	return probed, ok
+}
+
+// externalProbeValidPool holds the valid-symbol rows that
+// probeExternalTokenForParseState builds. Pooled rather than stored on
+// dfaTokenSource to keep the struct in its allocation class
+// (TestDFATokenSourceSizeBudget).
+var externalProbeValidPool = sync.Pool{
+	New: func() any { return new([]bool) },
+}
+
+// probeExternalTokenWithValidSymbols is the body of
+// probeZeroWidthExternalTokenForLexState for an explicit valid-symbol row.
+// preScanReplay also replays the padding the scanner skipped before tok when
+// Next captured the exact pre-scan scanner state for this token
+// (externalPreScanPayload), so the probe starts where C's lex of the version
+// starts.
+func (d *dfaTokenSource) probeExternalTokenWithValidSymbols(source []byte, row []bool, tok Token, preScanReplay bool) (Token, externalScannerCheckpoint, bool) {
 	scanStart, scanPoint := tok.StartByte, tok.StartPoint
 	// External scanners can skip padding before the token. Replay a token
 	// still owned by this source, retaining checkpoint proof where required.
@@ -4877,6 +4934,7 @@ func (d *dfaTokenSource) probeZeroWidthExternalTokenForLexState(source []byte, l
 		tok.StartByte <= uint32(len(source)) && d.lastTokenValid &&
 		d.lastTokenStartByte == tok.StartByte && d.lastTokenEndByte == tok.EndByte &&
 		((d.emptyExternalRecovery && !d.usesExternalCheckpoints) ||
+			(preScanReplay && len(d.externalPreScanPayload) > 0) ||
 			(d.lastExternalTokenValid && d.lastExternalTokenStartByte == tok.StartByte && d.lastExternalTokenEndByte == tok.EndByte)) {
 		scanStart = tok.ExternalScannerStartByte
 		row, column, _, ok := recover.PaddingStartPoint(source, scanStart, tok.StartByte, tok.StartPoint.Row, tok.StartPoint.Column)

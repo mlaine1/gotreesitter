@@ -95,3 +95,47 @@ func TestHaskellLayoutAndPatternForksMatchC(t *testing.T) {
 		})
 	}
 }
+
+// TestHaskellAllStacksFailingKeepsErrorTree pins the case where every GLR
+// version fails on one lookahead. C pauses them all and recovers the best
+// one, so its tree has an ERROR. The engine used to kill each version, end
+// the first pass with no stacks alive, and settle on a retry whose root had
+// no children and no error: the whole input vanished without a trace.
+func TestHaskellAllStacksFailingKeepsErrorTree(t *testing.T) {
+	entry := grammars.DetectLanguageByName("haskell")
+	if entry == nil {
+		t.Fatal("haskell grammar is not registered")
+	}
+	lang := entry.Language()
+	for _, src := range []string{
+		"operatorUpdate f = f { (+) = 1 }\n",
+		"operatorUpdate f = f { (+) = 1 }",
+	} {
+		done := make(chan struct{})
+		var tree *gotreesitter.Tree
+		var err error
+		go func() {
+			defer close(done)
+			tree, err = gotreesitter.NewParser(lang).Parse([]byte(src))
+		}()
+		select {
+		case <-done:
+		case <-time.After(30 * time.Second):
+			t.Fatal("parse did not finish within 30s")
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := tree.RootNode()
+		if !root.HasError() {
+			t.Errorf("%q: tree has no error, want one (C reports ERROR): %s", src, root.SExpr(lang))
+		}
+		if root.NamedChildCount() == 0 {
+			t.Errorf("%q: root has no children", src)
+		}
+		if got, want := root.EndByte(), uint32(len(src)); got != want {
+			t.Errorf("%q: root ends at byte %d, want %d", src, got, want)
+		}
+		tree.Release()
+	}
+}

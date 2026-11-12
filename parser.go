@@ -7086,7 +7086,7 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					}
 					continue
 				}
-				if len(stacks) > 1 {
+				if len(stacks) > 1 && glrOtherStackLive(stacks, s) {
 					// A GLR fork can leave sibling stacks in states that need
 					// different tokenizations of the same bytes: a keyword
 					// literal versus the grammar's generic word token, a
@@ -9065,6 +9065,22 @@ func (p *Parser) glrSiblingAcceptsLookahead(stacks []glrStack, self *glrStack, t
 			return true
 		}
 		if p.stateHasActionForSymbol(candidate.top().state, tok.Symbol) {
+			return true
+		}
+	}
+	return false
+}
+
+// glrOtherStackLive reports whether a stack other than self is still live.
+// The multi-stack no-action path kills a stack only while another version
+// can continue. When every version fails on one lookahead, C pauses them all
+// and recovers the best one (ts_parser__condense_stack, ts_parser__handle_error
+// in C/parser.c); here the last live stack takes the single-stack recovery
+// path below instead of dying with its siblings, which would end the pass
+// with no stacks alive.
+func glrOtherStackLive(stacks []glrStack, self *glrStack) bool {
+	for i := range stacks {
+		if other := &stacks[i]; other != self && !other.dead {
 			return true
 		}
 	}

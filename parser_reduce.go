@@ -4843,6 +4843,9 @@ func (p *Parser) applyReduceActionFromGSS(source []byte, s *glrStack, act ParseA
 		}
 		extra.parseState = targetState
 		nodeBumpEquivVersionMetadata(extra)
+		// The in-place retarget feeds gssEntryHash, so a cached shape prefix
+		// through this node on a sibling stack's spine is now stale.
+		p.mergeScratch.bumpShapePrefixEpoch()
 		p.pushStackNode(s, targetState, extra, entryScratch, gssScratch)
 	}
 	if timing != nil {
@@ -4974,6 +4977,9 @@ func (p *Parser) applyReduceActionForked(source []byte, s *glrStack, act ParseAc
 			}
 			extra.parseState = targetState
 			nodeBumpEquivVersionMetadata(extra)
+			// The in-place retarget feeds gssEntryHash, so a cached shape
+			// prefix through this node on a sibling stack's spine is stale.
+			p.mergeScratch.bumpShapePrefixEpoch()
 			p.pushStackNode(target, targetState, extra, entryScratch, gssScratch)
 		}
 		target.byteOffset = target.gss.byteOffset()
@@ -5407,6 +5413,9 @@ func (p *Parser) applyReduceActionFromGSSTransientParents(source []byte, s *glrS
 		}
 		extra.parseState = targetState
 		nodeBumpEquivVersionMetadata(extra)
+		// The in-place retarget feeds gssEntryHash, so a cached shape prefix
+		// through this node on a sibling stack's spine is now stale.
+		p.mergeScratch.bumpShapePrefixEpoch()
 		p.pushStackNode(s, targetState, extra, entryScratch, gssScratch)
 	}
 	if timing != nil {
@@ -8252,6 +8261,9 @@ func (p *Parser) applyReduceAction(source []byte, s *glrStack, act ParseAction, 
 		}
 		extra.parseState = targetState
 		nodeBumpEquivVersionMetadata(extra)
+		// The in-place retarget feeds gssEntryHash, so a cached shape prefix
+		// through this node on a sibling stack's spine is now stale.
+		p.mergeScratch.bumpShapePrefixEpoch()
 		p.pushStackNode(s, targetState, extra, entryScratch, gssScratch)
 	}
 	if timing != nil {
@@ -8432,6 +8444,9 @@ func (p *Parser) applyReduceActionTransientParents(source []byte, s *glrStack, a
 		}
 		extra.parseState = targetState
 		nodeBumpEquivVersionMetadata(extra)
+		// The in-place retarget feeds gssEntryHash, so a cached shape prefix
+		// through this node on a sibling stack's spine is now stale.
+		p.mergeScratch.bumpShapePrefixEpoch()
 		p.pushStackNode(s, targetState, extra, entryScratch, gssScratch)
 	}
 	if timing != nil {
@@ -8615,6 +8630,9 @@ func (p *Parser) pushCollapsedUnaryReduceNode(s *glrStack, act ParseAction, tok 
 		}
 		extra.parseState = targetState
 		nodeBumpEquivVersionMetadata(extra)
+		// The in-place retarget feeds gssEntryHash, so a cached shape prefix
+		// through this node on a sibling stack's spine is now stale.
+		p.mergeScratch.bumpShapePrefixEpoch()
 		p.pushStackNode(s, targetState, extra, entryScratch, gssScratch)
 	}
 }

@@ -1674,6 +1674,71 @@ func (p *Parser) tryResyncErrorRecoveryMode(source []byte, s *glrStack, tok Toke
 	return status
 }
 
+// recoverEOFWrapStack wraps every stack entry above the base into one ERROR
+// node, as tree-sitter C's ts_parser__recover_eof does when the last version
+// cannot accept at the end of input (C/parser.c): the stack is popped whole
+// and the subtrees become the children of an ERROR that the parse then
+// accepts. Without this, the engine killed the stack, the pass ended with no
+// stacks alive, and the result was built from a dead stack's fragments with
+// no ERROR at all. It reports false, leaving the stack untouched, when the
+// stack holds nothing above the base or a payload cannot be materialized.
+func (p *Parser) recoverEOFWrapStack(s *glrStack, arena *nodeArena, nodeCount *int, entryScratch *glrEntryScratch, gssScratch *gssScratch, trackChildErrors *bool) bool {
+	if p == nil || s == nil || arena == nil || p.noTreeBenchmarkOnly {
+		return false
+	}
+	s.ensureGSS(gssScratch)
+	depth := s.depth()
+	if depth < 2 {
+		return false
+	}
+	entries := make([]stackEntry, 0, depth)
+	for n := s.gss.head; n != nil; n = n.prev {
+		entries = append(entries, n.entry)
+	}
+	base := entries[len(entries)-1]
+	children := make([]*Node, 0, len(entries)-1)
+	for i := len(entries) - 2; i >= 0; i-- {
+		node, _ := materializeStackEntryPayloadEntryWithParser(p, arena, entries[i], materializeForRecovery, materializeForRecovery)
+		if node == nil {
+			if stackEntryHasNode(entries[i]) || stackEntryMaterializesForResult(entries[i]) {
+				return false
+			}
+			continue
+		}
+		if len(node.children) > 0 && errorNodeOpenForAbsorption(node) {
+			children = append(children, node.children...)
+			continue
+		}
+		node.clearRecoveryPlaceholderExtra()
+		children = append(children, node)
+	}
+	if len(children) == 0 {
+		return false
+	}
+	errNode := p.newRecoveryParentNodeInArena(arena, errorSymbol, true, children, 0)
+	errNode.setHasError(true)
+	nodeBumpEquivVersionBeforePublication(errNode)
+	if perfCountersEnabled {
+		perfRecordErrorNode()
+	}
+	if trackChildErrors != nil {
+		*trackChildErrors = true
+	}
+	if !s.truncate(1) {
+		return false
+	}
+	errNode.preGotoState = base.state
+	errNode.parseState = base.state
+	p.pushStackNode(s, base.state, errNode, entryScratch, gssScratch)
+	if nodeCount != nil {
+		*nodeCount = *nodeCount + 1
+	}
+	if p.glrTrace {
+		fmt.Printf("      -> RECOVER-EOF wrapped=%d\n", len(children))
+	}
+	return true
+}
+
 func (p *Parser) rebuildAliasPrefixedRecoveredSuffix(source []byte, state StateID, suffix []*Node, lookahead Symbol, arena *nodeArena) (*Node, StateID, bool) {
 	if p == nil || p.language == nil || len(source) == 0 || len(suffix) != 2 {
 		return nil, 0, false

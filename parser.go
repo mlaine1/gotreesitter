@@ -6885,6 +6885,17 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 							return tree
 						}
 					}
+					if !glrOtherStackLive(stacks, s) {
+						if p.recoverEOFWrapStack(s, arena, &nodeCount, &scratch.entries, &scratch.gss, trackChildErrors) {
+							if actionTiming != nil {
+								recordNoActionTiming()
+							}
+							if phaseTiming {
+								actionDispatchNanos += time.Since(dispatchStart).Nanoseconds()
+							}
+							return finalize(liveGLRStacksOnly(stacks, s), ParseStopAccepted)
+						}
+					}
 					s.dead = true
 					if actionTiming != nil {
 						ns := recordNoActionTiming()
@@ -6914,6 +6925,15 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 						// would let the version run past a layout boundary
 						// it never saw (haskell F87).
 						s.dead = true
+					} else if tok.ExternalScannerToken && !glrOtherStackLive(stacks, s) &&
+						p.guardRealTokenAttachmentGap(source, s, tok, "zero-width-error") {
+						// No version can use this scanner token. C detects
+						// the error here (ts_parser__handle_error) and the
+						// recovered tree carries an ERROR at this position;
+						// skipping the token silently would publish a tree
+						// with no error for input C rejects.
+						p.pushOrExtendErrorNode(s, currentState, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, trackChildErrors, true)
+						consumeCurrentToken(s)
 					} else {
 						consumeCurrentToken(s)
 					}
@@ -9078,6 +9098,17 @@ func (p *Parser) glrSiblingAcceptsLookahead(stacks []glrStack, self *glrStack, t
 // in C/parser.c); here the last live stack takes the single-stack recovery
 // path below instead of dying with its siblings, which would end the pass
 // with no stacks alive.
+// liveGLRStacksOnly returns a one-element slice holding self, for a result
+// that must be built from self alone while dead siblings remain in stacks.
+func liveGLRStacksOnly(stacks []glrStack, self *glrStack) []glrStack {
+	for i := range stacks {
+		if &stacks[i] == self {
+			return stacks[i : i+1]
+		}
+	}
+	return stacks
+}
+
 func glrOtherStackLive(stacks []glrStack, self *glrStack) bool {
 	for i := range stacks {
 		if other := &stacks[i]; other != self && !other.dead {

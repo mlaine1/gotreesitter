@@ -770,7 +770,12 @@ func (d *dfaTokenSource) Next() Token {
 		// for recovery instead of testing the normal state's action row again.
 		if tok.Symbol != 0 && tok.EndByte <= tok.StartByte && !d.hasAnyActionForSymbol(tok.Symbol) &&
 			!(tok.lexFlags&tokenFlagExternalErrorFallback != 0 && int(tok.EndByte) > scanStartPos) {
-			if tokenFromExternal && d.canRetryAfterUnusableZeroWidthExternal(tok) {
+			// A single parse version reads the scanner's answer as C does: C
+			// has no retry here, and the parser records the error for a
+			// token it has no action for. Masking and rescanning would hide
+			// that error and read a different token stream (haskell
+			// `[d| a b\n|]`, where C reports an ERROR before `|]`).
+			if tokenFromExternal && len(d.glrStates) > 1 && d.canRetryAfterUnusableZeroWidthExternal(tok) {
 				if DebugDFA.Load() {
 					fmt.Printf("  ZERO-WIDTH external retry sym=%d at pos=%d state=%d\n", tok.Symbol, d.lexer.pos, d.state)
 				}

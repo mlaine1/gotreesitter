@@ -741,26 +741,26 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// Haskell has three exact repeat rows where C selects the reduce arm.
 	// Retaining both arms grows new graph-structured stack frontiers.
 	"haskell": {
-		blobSHA256:                 mustRuntimeProfileSHA256("31371b0f1dfb89c9dc03eecce905ecd2a2f386d99d7c9c3024b158b09c0fb877"),
+		blobSHA256:                 mustRuntimeProfileSHA256("722fb52a09119bfe77015c295fd2772e4e72a83ebb3a2cfe56b18917032f5243"),
 		compactConvergedSplitDrops: true,
 		conflictPolicies: []gotreesitter.ConflictPolicy{
 			{
-				State:         10267, // declarations_repeat1
+				State:         12242, // declarations_repeat1
 				Lookahead:     gotreesitter.ConflictPolicyAnyLookahead,
 				Kind:          gotreesitter.ConflictPolicyRepetitionReduce,
-				ReduceSymbols: []gotreesitter.Symbol{540},
+				ReduceSymbols: []gotreesitter.Symbol{550},
 			},
 			{
-				State:         11958, // exports_repeat1
+				State:         14043, // exports_repeat1
 				Lookahead:     gotreesitter.ConflictPolicyAnyLookahead,
 				Kind:          gotreesitter.ConflictPolicyRepetitionReduce,
-				ReduceSymbols: []gotreesitter.Symbol{538},
+				ReduceSymbols: []gotreesitter.Symbol{548},
 			},
 			{
-				State:         12199, // _exp_list_repeat1
+				State:         14382, // _exp_list_repeat1
 				Lookahead:     4,
 				Kind:          gotreesitter.ConflictPolicyRepetitionReduce,
-				ReduceSymbols: []gotreesitter.Symbol{520},
+				ReduceSymbols: []gotreesitter.Symbol{530},
 			},
 		},
 	},

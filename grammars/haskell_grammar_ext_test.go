@@ -263,6 +263,25 @@ a = f "hello"#2
 		want: `(haskell (declarations (bind (variable) (match (apply (apply (apply (apply (label) (label)) (label)) (label)) (label)))) (bind (variable) (match (list (label) (label) (label) (label) (label) (label) (label) (label) (label) (label)))) (bind (variable) (match (apply (apply (prefix_id (operator)) (label)) (label)))) (bind (variable) (match (apply (apply (prefix_id (operator)) (label)) (label)))) (bind (variable) (match (infix (label) (operator) (literal (integer))))) (bind (variable) (match (apply (apply (variable) (literal (string))) (literal (integer)))))))`,
 	},
 	{
+		name: `exp: required type arguments: type syntax in terms`,
+		source: `a = f (Int -> Bool)
+a = f (Int %1 -> String)
+a = f (Read T => T)
+a = f (forall a. a)
+a = f (forall a. Read a => String -> a)
+a = f (forall a -> a)
+a = f ((ctx, ctx') => a ⊸ b %m -> c)
+a = f ((->) Int Bool)
+`,
+		want: `(haskell (declarations (bind (variable) (match (apply (variable) (parens (function (constructor) (constructor)))))) (bind (variable) (match (apply (variable) (parens (linear_function (constructor) (modifier (literal (integer))) (constructor)))))) (bind (variable) (match (apply (variable) (parens (context (apply (constructor) (constructor)) (constructor)))))) (bind (variable) (match (apply (variable) (parens (forall (quantified_variables (variable)) (variable)))))) (bind (variable) (match (apply (variable) (parens (forall (quantified_variables (variable)) (context (apply (constructor) (variable)) (function (constructor) (variable)))))))) (bind (variable) (match (apply (variable) (parens (forall_required (quantified_variables (variable)) (variable)))))) (bind (variable) (match (apply (variable) (parens (context (tuple (variable) (variable)) (linear_function (variable) (linear_function (variable) (modifier (variable)) (variable)))))))) (bind (variable) (match (apply (variable) (parens (apply (apply (prefix_id (operator)) (constructor)) (constructor))))))))`,
+	},
+	{
+		name: `exp: required type arguments: percent operator in parentheses`,
+		source: `a = (a %b) (a %b c) (x -> a %b) (a % b)
+`,
+		want: `(haskell (declarations (bind (variable) (match (apply (apply (apply (parens (infix (variable) (operator) (variable))) (parens (infix (variable) (operator) (apply (variable) (variable))))) (parens (function (variable) (infix (variable) (operator) (variable))))) (parens (infix (variable) (operator) (variable))))))))`,
+	},
+	{
 		name: `foreign: multiline string entity`,
 		source: `foreign import capi """
     a
@@ -306,6 +325,15 @@ import A (A (data A, B))
 import A (data a)
 `,
 		want: `(haskell (imports (import (module (module_id)) (import_list (import_name (namespace) (name)))) (import (module (module_id)) (import_list (import_name (name) (children (associated_data (constructor)) (constructor))))) (import (module (module_id)) (import_list (import_name (namespace) (variable))))))`,
+	},
+	{
+		name: `import: namespace wildcards`,
+		source: `import A (type ..)
+import A as D (data ..)
+import A (type .., data ..)
+import A hiding (data ..)
+`,
+		want: `(haskell (imports (import (module (module_id)) (import_list (import_name (namespace) (all_names)))) (import (module (module_id)) (module (module_id)) (import_list (import_name (namespace) (all_names)))) (import (module (module_id)) (import_list (import_name (namespace) (all_names)) (import_name (namespace) (all_names)))) (import (module (module_id)) (import_list (import_name (namespace) (all_names))))))`,
 	},
 	{
 		name: `layout: label as first token of a layout`,
@@ -376,6 +404,12 @@ b = 2
 		want: `(haskell (header (module (module_id)) (exports (export (namespace) (name)) (export (variable)))))`,
 	},
 	{
+		name: `module: export namespace wildcards`,
+		source: `module A (type .., f, data ..) where
+`,
+		want: `(haskell (header (module (module_id)) (exports (export (namespace) (all_names)) (export (variable)) (export (namespace) (all_names)))))`,
+	},
+	{
 		name: `pat: record with operator field`,
 		source: `a A { (+) = b, (<>) } = b
 `,
@@ -432,6 +466,12 @@ a = case a of
 		want: `(haskell (declarations (function (function_head_parens (infix (variable) (operator) (literal (integer)))) (patterns (variable)) (match (variable))) (function (function_head_parens (infix (variable) (operator) (variable))) (patterns (variable)) (match (variable)))))`,
 	},
 	{
+		name: `pat: required type arguments: function type constructor`,
+		source: `f (Typed ((->) w Bool) g) = not . g
+`,
+		want: `(haskell (declarations (function (variable) (patterns (parens (apply (apply (constructor) (parens (apply (apply (prefix_id (operator)) (variable)) (constructor)))) (variable)))) (match (infix (variable) (operator) (variable))))))`,
+	},
+	{
 		name: `string: multiline`,
 		source: `a = """hello world"""
 a =
@@ -485,5 +525,28 @@ a = a
 type A = '[ 'a' ]
 `,
 		want: `(haskell (declarations (type_synomym (name) (apply (name) (parens (promoted (tuple (promoted (variable)) (promoted (variable))))))) (type_synomym (name) (promoted (list (literal (char)))))))`,
+	},
+	{
+		name: `varsym: unicode arrow as an operator`,
+		source: `main = print ('a' → 'a')
+  where
+    (→) = (,)
+infixr 5 →
+a = (x →) (→ x) (a → b)
+`,
+		want: `(haskell (declarations (bind (variable) (match (apply (variable) (parens (infix (literal (char)) (operator) (literal (char)))))) (local_binds (bind (prefix_id (operator)) (match (prefix_tuple))))) (fixity (integer) (operator)) (bind (variable) (match (apply (apply (left_section (variable) (operator)) (right_section (operator) (variable))) (parens (infix (variable) (operator) (variable))))))))`,
+	},
+	{
+		name: `varsym: unicode arrow where an arrow is expected`,
+		source: `f ∷ a → b
+f (view → Just x) = \y → case x of
+  A → b
+  _ | p x → c
+g = if | x → y
+h = do
+  (view → x) <- a
+  pure x
+`,
+		want: `(haskell (declarations (signature (variable) (function (variable) (variable))) (function (variable) (patterns (parens (view_pattern (variable) (apply (constructor) (variable))))) (match (lambda (patterns (variable)) (case (variable) (alternatives (alternative (constructor) (match (variable))) (alternative (wildcard) (match (guards (boolean (apply (variable) (variable)))) (variable)))))))) (bind (variable) (match (multi_way_if (match (guards (boolean (variable))) (variable))))) (bind (variable) (match (do (bind (parens (view_pattern (variable) (variable))) (variable)) (exp (apply (variable) (variable))))))))`,
 	},
 }

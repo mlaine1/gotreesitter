@@ -830,9 +830,9 @@ func TestBuiltinHaskellConflictPolicyAttaches(t *testing.T) {
 		lookahead gotreesitter.Symbol
 		reduce    gotreesitter.Symbol
 	}{
-		10267: {lookahead: gotreesitter.ConflictPolicyAnyLookahead, reduce: 540},
-		11958: {lookahead: gotreesitter.ConflictPolicyAnyLookahead, reduce: 538},
-		12199: {lookahead: 4, reduce: 520},
+		12242: {lookahead: gotreesitter.ConflictPolicyAnyLookahead, reduce: 550},
+		14043: {lookahead: gotreesitter.ConflictPolicyAnyLookahead, reduce: 548},
+		14382: {lookahead: 4, reduce: 530},
 	}
 	seen := make(map[gotreesitter.StateID]bool, len(want))
 	for _, policy := range lang.ConflictPolicies {

@@ -731,11 +731,13 @@ var scannerSpecCases = []scannerSpecCase{
 			"_varsym",
 			"_consym",
 			"\n",
+			"_cond_term_percent",
 		},
 		// _cmd_layout_start_explicit and _cond_layout_end_explicit display as
-		// their literal text ("{" and "}"); the trailing bare newline pattern
-		// external displays as the grammar-internal alias "_token1"; the
-		// remaining externals display exactly as their spec name.
+		// their literal text ("{" and "}"); the bare newline pattern external
+		// displays as the grammar-internal alias "_token1"; _cond_term_percent
+		// displays as its only alias, "%"; the remaining externals display
+		// exactly as their spec name.
 		display: []string{
 			"error_sentinel", "_cond_layout_semicolon", "_cmd_layout_start", "_cmd_layout_start_do",
 			"_cmd_layout_start_case", "_cmd_layout_start_if", "_cmd_layout_start_let", "_cmd_layout_start_quote",
@@ -749,7 +751,7 @@ var scannerSpecCases = []scannerSpecCase{
 			"_cond_prefix_tilde", "_cond_prefix_percent", "_cond_qualified_op", "_cond_left_section_op",
 			"_cond_no_section_op", "_cond_minus", "_cond_context", "_cond_infix",
 			"_cond_data_infix", "_cond_assoc_tyinst", "_varsym", "_consym",
-			"_token1",
+			"_token1", "%",
 		},
 		tokenCount:     hsTokenCount,
 		defaultSymbols: hsDefaultSymTable,

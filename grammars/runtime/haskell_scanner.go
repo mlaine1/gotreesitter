@@ -70,11 +70,12 @@ const (
 	hsVARSYM         = 46
 	hsCONSYM         = 47
 	hsUPDATE         = 48
+	hsTERM_PERCENT   = 49
 )
 
 // hsTokenCount is the number of externals in tree-sitter-haskell's grammar
-// (hsFAIL through hsUPDATE, hsTok* order above).
-const hsTokenCount = 49
+// (hsFAIL through hsTERM_PERCENT, hsTok* order above).
+const hsTokenCount = 50
 
 // hsDefaultSymTable records the concrete gotreesitter.Symbol IDs the
 // currently shipped haskell.bin assigns to each external, in hsTok* order
@@ -88,11 +89,11 @@ const hsTokenCount = 49
 // _cmd_layout_start_explicit and _cond_layout_end_explicit (indexes 8 and
 // 10) are literal-string externals ("{" and "}") sharing a Symbol ID with
 // every other occurrence of the same literal elsewhere in the grammar, and
-// the trailing pattern external (index 48, upstream's bare `\n` PATTERN
+// the pattern external (index 48, upstream's bare `\n` PATTERN
 // alternative, with no rule name of its own) shares a Symbol ID with every
-// other occurrence of that pattern, so its ID (107) falls outside the
-// otherwise-contiguous 108-155 run -- both exactly like blade's "/>" and
-// bash's "\n" externals.
+// other occurrence of that pattern, so its ID falls outside the otherwise
+// contiguous run -- both exactly like blade's "/>" and bash's "\n"
+// externals. _cond_term_percent (index 49) was appended after it.
 var hsDefaultSymTable = [hsTokenCount]gotreesitter.Symbol{
 	116, // error_sentinel (FAIL)
 	117, // _cond_layout_semicolon (SEMICOLON)
@@ -143,6 +144,7 @@ var hsDefaultSymTable = [hsTokenCount]gotreesitter.Symbol{
 	162, // _varsym (VARSYM)
 	163, // _consym (CONSYM)
 	115, // "\n" pattern (UPDATE, display: _token1)
+	164, // _cond_term_percent (TERM_PERCENT, display: "%")
 }
 
 // hsExternalScannerSpec records the source contract for this hand-written
@@ -155,8 +157,8 @@ var hsExternalScannerSpec = ExternalScannerSpec{
 	UpstreamRepo:   "https://github.com/tree-sitter/tree-sitter-haskell",
 	UpstreamCommit: "0975ef72fc3c47b530309ca93937d7d143523628",
 	SourceFiles: []ExternalScannerSourceFile{
-		{Path: "src/grammar.json", SHA256: "0f46f28a790b09b85c287fa3a6d2c4615c029ceeaad184facf0a0e53a8f7711b"},
-		{Path: "src/scanner.c", SHA256: "9affd9d3a3d935494043f429c6fde5831cdddc097c75f56444d95bdfc3528bf7"},
+		{Path: "src/grammar.json", SHA256: "c830ca057946149b174709f8e1c1a21d6d9be57aa1d199dcdaa6d1cd64249589"},
+		{Path: "src/scanner.c", SHA256: "8566485719347ab4cd9401a3771bc8ae6578c853b78d529d5c3cc1cfa59ed956"},
 	},
 	Externals: []string{
 		"error_sentinel",
@@ -208,6 +210,7 @@ var hsExternalScannerSpec = ExternalScannerSpec{
 		"_varsym",
 		"_consym",
 		"\n",
+		"_cond_term_percent",
 	},
 }
 
@@ -1366,6 +1369,28 @@ func (env *hsEnv) tightOp(whitespace bool, s int) int {
 	return hsFAIL
 }
 
+func hsModifierSpaceChar(c rune) bool {
+	return c == '\t' || hsIsSpaceChar(c) || hsIsNewline(c)
+}
+
+// modifierArrowAhead: in a function type in a term, a prefix `%` is a
+// multiplicity (`f (a %1 -> b)`) only if an arrow follows the modifier's
+// argument; otherwise it is the operator `%`, as in `(a %b)`. The argument is
+// skipped only if it is a name, a number or a promoted name (`%'Many`); for
+// anything else (`%(m)`) the modifier reading is kept.
+func (env *hsEnv) modifierArrowAhead() bool {
+	i := uint32(1)
+	if env.charAt(i, '\'') {
+		i++
+	}
+	if !hsIsIdChar(env.peekAt(i)) {
+		return true
+	}
+	i = env.advanceWhile(i, hsQuoterChar)
+	i = env.advanceWhile(i, hsModifierSpaceChar)
+	return env.seqFrom("->", i) || env.charAt(i, 0x2192)
+}
+
 func (env *hsEnv) prefixOrVarsym(whitespace bool, s int) int {
 	if whitespace {
 		if env.valid(s) {
@@ -1794,7 +1819,31 @@ func (env *hsEnv) processTokenSymop(whitespace bool, next int) int {
 	case hsLAt:
 		return env.infixOrVarsym(whitespace, hsPREFIX_AT, hsTIGHT_AT)
 	case hsLPercent:
+		// A multiplicity in a function type in a term (RequiredTypeArguments):
+		// the token includes the `%`, because the position has moved past it
+		// for the arrow lookahead. There the `%` follows an expression
+		// operand, so NO_SECTION_OP is valid as well; in types, binders and
+		// record fields the modifier keeps its zero-width condition.
+		if whitespace && env.valid(hsTERM_PERCENT) && env.valid(hsNO_SECTION_OP) {
+			env.markEnd()
+			if env.modifierArrowAhead() {
+				return hsTERM_PERCENT
+			}
+			if env.valid(hsVARSYM) {
+				return hsVARSYM
+			}
+			return hsFAIL
+		}
 		return env.prefixOrVarsym(whitespace, hsPREFIX_PERCENT)
+	// GHC reserves `→` only with UnicodeSyntax; otherwise it lexes it as an
+	// ordinary varsym (`sym` in GHC/Parser/Lexer.x). `→` is the arrow
+	// wherever the grammar expects an arrow after an expression or a type
+	// (the phantom arrow is valid there) or where no operator is valid, and
+	// an operator otherwise, e.g. `'a' → 'b'` and `(→) = (,)`.
+	case hsLArrow:
+		if env.char0(0x2192) && !env.valid(hsARROW) {
+			return env.finishSymop(hsVARSYM)
+		}
 	case hsLSymop:
 		if env.char0(':') {
 			return env.finishSymop(hsCONSYM)

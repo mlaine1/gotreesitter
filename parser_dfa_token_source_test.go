@@ -1063,6 +1063,56 @@ func TestGLRUnionDFAPreservesZeroWidthExternalTransition(t *testing.T) {
 	}
 }
 
+// TestGLRUnionDFACannotDisplaceExternalTokenSameStatesAccept pins the case
+// where the external token and the DFA token are accepted by the same parse
+// states. C runs the scanner first for each version, so none of them would
+// read the DFA token and the scanner's longer token stands. A state that
+// accepts the DFA token alone still lets it win.
+func TestGLRUnionDFACannotDisplaceExternalTokenSameStatesAccept(t *testing.T) {
+	lang := &Language{
+		SymbolNames: []string{"EOF", "*", "_varsym"},
+		LexStates: []LexState{
+			{Default: -1, EOF: -1, Transitions: []LexTransition{{Lo: '*', Hi: '*', NextState: 1}}},
+			{AcceptToken: 1, Default: -1, EOF: -1},
+			{Default: -1, EOF: -1, Transitions: []LexTransition{{Lo: '*', Hi: '*', NextState: 1}}},
+		},
+		// The two parse states have different lex modes, so the token source
+		// scans the DFA for each of them.
+		LexModes: []LexMode{{}, {}, {LexState: 2}},
+	}
+	for _, tc := range []struct {
+		name         string
+		dfaOnlyState bool
+		wantDFA      bool
+	}{
+		{name: "same states accept both"},
+		{name: "another state accepts the DFA token alone", dfaOnlyState: true, wantDFA: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lookup := func(state StateID, sym Symbol) uint16 {
+				if state == 1 && (sym == 1 || sym == 2) {
+					return 1
+				}
+				if tc.dfaOnlyState && state == 2 && sym == 1 {
+					return 1
+				}
+				return 0
+			}
+			ts := acquireDFATokenSource(NewLexer(lang.LexStates, []byte("*>")), lang, lookup, nil, nil, nil)
+			defer ts.Close()
+			ts.SetParserState(1)
+			ts.SetGLRStates([]StateID{1, 2})
+			tok, _, _, _, preferDFA := ts.preferGLRUnionDFAOverExternalToken(Token{Symbol: 2, EndByte: 2}, 2, 0, 2, 0, 0, 0)
+			if preferDFA != tc.wantDFA {
+				t.Fatalf("DFA preferred=%t, want %t; token=%+v", preferDFA, tc.wantDFA, tok)
+			}
+			if tc.wantDFA && (tok.Symbol != 1 || tok.EndByte != 1) {
+				t.Fatalf("DFA token=%+v, want symbol 1 ending at byte 1", tok)
+			}
+		})
+	}
+}
+
 type zeroWidthStateExternalScanner struct {
 	checkpointByteExternalScanner
 	transition bool

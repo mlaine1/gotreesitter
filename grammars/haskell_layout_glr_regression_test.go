@@ -22,6 +22,10 @@ import (
 //     same state. The zero-width loop guard masked the third one, so the
 //     scanner read a layout semicolon and the next declaration became
 //     arguments of the last expression.
+//   - scanner operator: one version accepts the scanner's `*>` operator and
+//     the DFA `*`, the other accepts neither. C lexes each version on its
+//     own with the scanner first, so `*>` wins. The engine chose the DFA `*`
+//     for both, and `>` became an ERROR.
 //   - typed and record patterns: the full-parse merge cap of one dropped the
 //     pattern reading that C keeps as a second link on a merged version. The
 //     equation became a top splice with an ERROR, or the whole header was
@@ -64,6 +68,11 @@ func TestHaskellLayoutAndPatternForksMatchC(t *testing.T) {
 			name:   "three layout ends at one byte",
 			source: "\n        u $ do\n            s $ do\n                g\n                r $ do\n                        (a)\n                        (f)\n    m t = m t\n",
 			want:   "(haskell (declarations (top_splice (infix (variable) (operator) (do (exp (infix (variable) (operator) (do (exp (variable)) (exp (infix (variable) (operator) (do (exp (parens (variable))) (exp (parens (variable)))))))))))) (function (variable) (patterns (variable)) (match (apply (variable) (variable))))))",
+		},
+		{
+			name:   "scanner operator at a line start inside parentheses",
+			source: "f = do\n  (a\n   *> b)\n",
+			want:   "(haskell (declarations (bind (variable) (match (do (exp (parens (infix (variable) (operator) (variable)))))))))",
 		},
 		{
 			name:   "empty input",

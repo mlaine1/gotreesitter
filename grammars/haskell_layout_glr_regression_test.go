@@ -215,3 +215,32 @@ func TestHaskellErrorBeforeRootStaysInTree(t *testing.T) {
 		tree.Release()
 	}
 }
+
+// TestHaskellUnusableZeroWidthScannerTokenIsError pins a zero-width scanner
+// token that the only parse version has no action for. At the `|]` in column
+// one the scanner returns a layout semicolon that the quote's state cannot
+// use. C detects an error, skips the token inside an empty ERROR, and closes
+// the quote; the want is the C tree. The token source used to mask the
+// symbol and rescan without telling the parser, so the tree had no error.
+func TestHaskellUnusableZeroWidthScannerTokenIsError(t *testing.T) {
+	entry := grammars.DetectLanguageByName("haskell")
+	if entry == nil {
+		t.Fatal("haskell grammar is not registered")
+	}
+	lang := entry.Language()
+	const want = "(haskell (declarations (top_splice (quote (quoted_decls (top_splice (apply (variable) (variable)))) (ERROR)))))"
+	for _, src := range withoutFinalNewline("[d|    foo bar\n|]\n") {
+		tree := parseHaskellWithin(t, lang, src)
+		root := tree.RootNode()
+		if got := root.SExpr(lang); got != want {
+			t.Errorf("%q: SExpr = %s\nwant    %s", src, got, want)
+		}
+		if !root.HasError() {
+			t.Errorf("%q: tree has no error, want one (C reports ERROR)", src)
+		}
+		if got, want := root.EndByte(), uint32(len(src)); got != want {
+			t.Errorf("%q: root ends at byte %d, want %d", src, got, want)
+		}
+		tree.Release()
+	}
+}

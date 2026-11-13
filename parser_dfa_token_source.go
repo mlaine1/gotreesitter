@@ -144,7 +144,13 @@ type dfaTokenSource struct {
 	// state remains unchanged.
 	extZeroPos   int
 	extZeroState StateID
-	extZeroTried []bool
+	// unusableZeroWidthExternalSym is the zero-width scanner symbol that the
+	// last Next call handed to the parser at (extZeroPos, extZeroState)
+	// although that single parse state has no action for it; zero when it
+	// handed over none. See handedOverUnusableZeroWidthExternal. It sits in
+	// extZeroState's padding (TestDFATokenSourceSizeBudget).
+	unusableZeroWidthExternalSym Symbol
+	extZeroTried                 []bool
 
 	// Zero-width token guard for all token kinds (DFA + external).
 	// Some grammars can emit endless zero-width marker/token sequences at the
@@ -490,6 +496,7 @@ func (d *dfaTokenSource) Reset(source []byte) {
 	}
 	d.extZeroPos = -1
 	d.extZeroState = 0
+	d.unusableZeroWidthExternalSym = 0
 	d.zeroWidthPos = -1
 	d.zeroWidthCount = 0
 	d.bashArithmeticCachePos = -1
@@ -554,6 +561,7 @@ func (d *dfaTokenSource) Close() {
 	d.glrStates = nil
 	d.extZeroPos = -1
 	d.extZeroState = 0
+	d.unusableZeroWidthExternalSym = 0
 	d.zeroWidthPos = -1
 	d.zeroWidthCount = 0
 	d.bashArithmeticCachePos = -1
@@ -589,6 +597,7 @@ func (d *dfaTokenSource) Next() Token {
 		// maximum frontier only across attempts within this read.
 		d.externalLookaheadEndByte = 0
 		d.externalTokensProduced = 0
+		d.unusableZeroWidthExternalSym = 0
 	}
 	if d != nil && d.lexer != nil {
 		d.lexer.skipLeadingBOM()
@@ -770,21 +779,38 @@ func (d *dfaTokenSource) Next() Token {
 		// for recovery instead of testing the normal state's action row again.
 		if tok.Symbol != 0 && tok.EndByte <= tok.StartByte && !d.hasAnyActionForSymbol(tok.Symbol) &&
 			!(tok.lexFlags&tokenFlagExternalErrorFallback != 0 && int(tok.EndByte) > scanStartPos) {
-			if tokenFromExternal && d.canRetryAfterUnusableZeroWidthExternal(tok) {
+			retryExternal := tokenFromExternal && d.canRetryAfterUnusableZeroWidthExternal(tok)
+			switch {
+			case retryExternal && len(d.glrStates) <= 1 && !d.cRecoveryEnabled:
+				// A single parse version reads the scanner's answer as C
+				// does: C has no retry here, and the parser detects an error
+				// for a token its state has no action for
+				// (ts_parser__advance, C/parser.c). Hand the token to the
+				// parser so it records that error. The symbol is now masked
+				// at this position and state, so the next read rescans
+				// without it (haskell `[d| a b\n|]`: C reports an ERROR
+				// before `|]`). A grammar on the C recovery port keeps the
+				// rescan inside this read: its recovery was matched to C
+				// with that token stream.
+				if DebugDFA.Load() {
+					fmt.Printf("  ZERO-WIDTH external unusable sym=%d at pos=%d state=%d\n", tok.Symbol, d.lexer.pos, d.state)
+				}
+				d.unusableZeroWidthExternalSym = tok.Symbol
+			case retryExternal:
 				if DebugDFA.Load() {
 					fmt.Printf("  ZERO-WIDTH external retry sym=%d at pos=%d state=%d\n", tok.Symbol, d.lexer.pos, d.state)
 				}
 				continue
-			}
-			if d.lexer.pos < len(d.lexer.source) {
+			case d.lexer.pos < len(d.lexer.source):
 				if DebugDFA.Load() {
 					fmt.Printf("  ZERO-WIDTH skip sym=%d at pos=%d state=%d\n", tok.Symbol, d.lexer.pos, d.state)
 				}
 				d.extZeroPos = -1
 				d.lexer.skipOneRune()
 				continue
+			default:
+				tok = d.eofTokenAtLexerPos()
 			}
-			tok = d.eofTokenAtLexerPos()
 		}
 
 		if tok.Symbol != 0 && tok.EndByte <= tok.StartByte {
@@ -3789,6 +3815,7 @@ func (d *dfaTokenSource) beginRelexAt(target int, pt Point) {
 	}
 	d.extZeroPos = -1
 	d.extZeroState = 0
+	d.unusableZeroWidthExternalSym = 0
 	if len(d.extZeroTried) > 0 {
 		d.extZeroTried = d.extZeroTried[:0]
 	}
@@ -4358,6 +4385,18 @@ func isExplicitLineBreakSymbolName(name string) bool {
 	default:
 		return false
 	}
+}
+
+// handedOverUnusableZeroWidthExternal reports whether tok is the zero-width
+// scanner token that the last Next call returned for state although state
+// has no action for it. Next does that only for a single parse version,
+// after it masked the symbol at this position and state.
+func (d *dfaTokenSource) handedOverUnusableZeroWidthExternal(tok Token, state StateID) bool {
+	if d == nil || d.unusableZeroWidthExternalSym == 0 || tok.Symbol != d.unusableZeroWidthExternalSym {
+		return false
+	}
+	return tok.ExternalScannerToken && tok.EndByte == tok.StartByte &&
+		d.extZeroPos == int(tok.StartByte) && d.extZeroState == state
 }
 
 func (d *dfaTokenSource) canRetryAfterUnusableZeroWidthExternal(tok Token) bool {

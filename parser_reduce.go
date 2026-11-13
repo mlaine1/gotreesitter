@@ -1089,6 +1089,45 @@ func (p *Parser) pushOrExtendErrorNode(s *glrStack, state StateID, tok Token, no
 	}
 }
 
+// pushZeroWidthTokenError records a zero-width scanner token that the state
+// has no action for as an empty ERROR. C detects an error for such a token
+// (ts_parser__advance, C/parser.c) and its recovery skips the token inside an
+// ERROR that later reductions carry along as an extra
+// (ts_parser__recover, C/parser.c). The node here is likewise EXTRA: it shows
+// in the tree, is transparent to production arity, and parsing resumes in
+// the same state.
+func (p *Parser) pushZeroWidthTokenError(s *glrStack, state StateID, tok Token, nodeCount *int, arena *nodeArena, entryScratch *glrEntryScratch, gssScratch *gssScratch, trackChildErrors *bool) {
+	if p != nil {
+		// See pushOrExtendErrorNode: error content makes costs relevant.
+		p.crecoveryCostCompetitionRelevant = true
+	}
+	if s != nil {
+		top := stackEntryNode(s.top())
+		if top != nil && top.symbol == errorSymbol && top.isExtra() && !top.isMissing() &&
+			top.parseState == state && top.endByte == tok.StartByte && top.startByte == top.endByte {
+			// A second unusable token at the same byte adds nothing to an
+			// empty ERROR that is already there.
+			return
+		}
+	}
+	errNode := newLeafNodeInArena(arena, errorSymbol, true,
+		tok.StartByte, tok.EndByte, tok.StartPoint, tok.EndPoint)
+	p.stampCompactPackedGSSZeroChildReceipt(&errNode.rawShape)
+	errNode.setHasError(true)
+	errNode.setExtra(true)
+	if trackChildErrors != nil {
+		*trackChildErrors = true
+	}
+	if perfCountersEnabled {
+		perfRecordErrorNode()
+	}
+	errNode.parseState = state
+	p.pushStackNode(s, state, errNode, entryScratch, gssScratch)
+	if nodeCount != nil {
+		*nodeCount = *nodeCount + 1
+	}
+}
+
 // pushLexErrorRunLeaf absorbs an unlexable-run lookahead (errorSymbol token
 // from NextWithErrorRuns) into the stack, mirroring C's skipped-error lexing:
 // the run becomes an ERROR leaf that is EXTRA — present in the tree but

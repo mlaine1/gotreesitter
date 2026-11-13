@@ -6914,6 +6914,16 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 						// would let the version run past a layout boundary
 						// it never saw (haskell F87).
 						s.dead = true
+					} else if !glrOtherStackLive(stacks, s) &&
+						dts.handedOverUnusableZeroWidthExternal(tok, currentState) &&
+						realTokenAttachmentGapIsParserPadding(source, s, tok, p.included, p.lineContinuationEscapeByte()) {
+						// The only version cannot use this scanner token. C
+						// detects the error here (ts_parser__handle_error)
+						// and its tree carries an ERROR at this position;
+						// skipping the token silently would publish a tree
+						// with no error for input C rejects.
+						p.pushZeroWidthTokenError(s, currentState, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, trackChildErrors)
+						consumeCurrentToken(s)
 					} else {
 						consumeCurrentToken(s)
 					}

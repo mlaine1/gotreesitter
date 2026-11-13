@@ -612,6 +612,30 @@ func finalizeReturnedTreeRootSpan(tree *Tree, source []byte) {
 	tree.setParseRuntime(rt)
 }
 
+// markUnacceptedTreeHasError gives the tree that a parse operation returns a
+// consumer-visible error when its parse ended with no live stack. Such a
+// parse never reached accept: the last version had no action for its
+// lookahead, and the root was assembled from the dead stack's fragments.
+// When those fragments happen to span the input, markTruncatedTreeHasError
+// does not apply, and the tree used to report no error for input the parser
+// rejected. C cannot return such a tree: its last version recovers
+// (ts_parser__recover or, at the end of input, ts_parser__recover_eof in
+// C/parser.c), and the recovered tree carries an ERROR. This only ever sets
+// the flag and leaves the tree's shape alone. It runs once, on the
+// operation's final tree (retryCutEnd): the retry ladder and the fallback
+// routes read HasError on intermediate trees to decide whether to try again,
+// and an earlier mark would stop a retry that parses the input cleanly.
+func markUnacceptedTreeHasError(tree *Tree) {
+	if tree == nil {
+		return
+	}
+	root := rawRootOrNil(tree)
+	if root == nil || root.hasError() || tree.rawParseStopReason() != ParseStopNoStacksAlive {
+		return
+	}
+	root.setHasError(true)
+}
+
 // compactRecoverEOFRootSpanPreserved identifies the one compact result whose
 // raw C root intentionally ends before a clean source tail. The shape is
 // deliberately exact: ordinary compact ERROR roots and edited trees do not

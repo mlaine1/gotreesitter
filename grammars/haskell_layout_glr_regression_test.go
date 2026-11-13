@@ -300,3 +300,33 @@ func TestHaskellRootStartsAtLeadingZeroWidthScannerToken(t *testing.T) {
 		})
 	}
 }
+
+// TestHaskellParseWithoutLiveStackReportsError pins a parse that ends with
+// no live stack although the dead stack's fragments span the input: the last
+// version has no action at the end of input (a quasi-quote closed on a
+// preprocessor line). C recovers there and its tree has an ERROR. The engine
+// built a root from the fragments and reported no error.
+func TestHaskellParseWithoutLiveStackReportsError(t *testing.T) {
+	entry := grammars.DetectLanguageByName("haskell")
+	if entry == nil {
+		t.Fatal("haskell grammar is not registered")
+	}
+	lang := entry.Language()
+	for _, src := range withoutFinalNewline("[d|    foo bar\n#include foo|]\n") {
+		tree := parseHaskellWithin(t, lang, src)
+		root := tree.RootNode()
+		if !root.HasError() {
+			t.Errorf("%q: tree has no error, want one (C reports ERROR): %s", src, root.SExpr(lang))
+		}
+		if root.NamedChildCount() == 0 {
+			t.Errorf("%q: root has no children", src)
+		}
+		if got := root.StartByte(); got != 0 {
+			t.Errorf("%q: root starts at byte %d, want 0", src, got)
+		}
+		if got, want := root.EndByte(), uint32(len(src)); got != want {
+			t.Errorf("%q: root ends at byte %d, want %d", src, got, want)
+		}
+		tree.Release()
+	}
+}

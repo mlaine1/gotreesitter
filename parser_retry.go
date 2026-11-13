@@ -1894,6 +1894,9 @@ func (p *Parser) retryCutEnd(tree *Tree) {
 	if p.retryCut != retryCutNone && tree != nil {
 		tree.ensureParseRuntime().RetryStopReason = p.retryCut.reason()
 	}
+	if p.retryCutDepth == 0 {
+		markUnacceptedTreeHasError(tree)
+	}
 }
 
 // noteRetryCut records the first cause that stopped optional retry or

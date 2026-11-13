@@ -2938,7 +2938,50 @@ func (p *Parser) applyShiftAction(s *glrStack, act ParseAction, tok Token, nodeC
 	}
 }
 
+// applyReduceActionDispatch applies one reduce and kills the stack when a
+// unit reduce made no progress.
+//
+// The reduce paths keep the exposed state when the table has no goto for the
+// reduced symbol (targetState = topState). On a stack that error recovery left
+// in a state the table never reaches, a one-child reduce can then pop a node
+// and push its parent into the same state at the same depth, on top of an
+// entry that is in that state too. The lookahead is unchanged, so the same
+// action fires again and the stack wraps the node until the iteration limit
+// stops the parse; a parse that stops on the iteration limit is not retried.
+// C/parser.c ts_parser__reduce has no such fallback: it reads
+// ts_language_next_state, and a recovered stack is in ERROR_STATE.
 func (p *Parser) applyReduceActionDispatch(source []byte, s *glrStack, act ParseAction, tok Token, anyReduced *bool, nodeCount *int, arena *nodeArena, entryScratch *glrEntryScratch, gssScratch *gssScratch, tmpEntries *[]stackEntry, deferParentLinks bool, trackChildErrors *bool) {
+	guard := p != nil && s != nil && !s.dead && act.ChildCount == 1 && !tok.NoLookahead
+	var stateBefore StateID
+	depthBefore := 0
+	if guard {
+		stateBefore = s.top().state
+		depthBefore = s.depth()
+	}
+	p.applyReduceActionDispatchUnguarded(source, s, act, tok, anyReduced, nodeCount, arena, entryScratch, gssScratch, tmpEntries, deferParentLinks, trackChildErrors)
+	if !guard || s.dead || s.depth() != depthBefore || s.top().state != stateBefore {
+		return
+	}
+	if below, ok := s.stateBelowTop(); ok && below == stateBefore && p.lookupGoto(below, act.Symbol) == 0 {
+		s.dead = true
+	}
+}
+
+// stateBelowTop returns the parser state of the entry under the top entry.
+func (s *glrStack) stateBelowTop() (StateID, bool) {
+	if s.gss.head != nil {
+		if s.gss.head.prev == nil {
+			return 0, false
+		}
+		return s.gss.head.prev.entry.state, true
+	}
+	if len(s.entries) < 2 {
+		return 0, false
+	}
+	return s.entries[len(s.entries)-2].state, true
+}
+
+func (p *Parser) applyReduceActionDispatchUnguarded(source []byte, s *glrStack, act ParseAction, tok Token, anyReduced *bool, nodeCount *int, arena *nodeArena, entryScratch *glrEntryScratch, gssScratch *gssScratch, tmpEntries *[]stackEntry, deferParentLinks bool, trackChildErrors *bool) {
 	workCountRecordReduce()
 	workCountObserveReductionPop(s, int(act.ChildCount)) // work-count-assembly: topology direct-pop seam
 	entries := s.entries

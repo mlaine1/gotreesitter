@@ -122,8 +122,11 @@ func TestHaskellAllStacksFailingKeepsErrorTree(t *testing.T) {
 	}
 	lang := entry.Language()
 	for _, src := range []string{
-		"operatorUpdate f = f { (+) = 1 }\n",
-		"operatorUpdate f = f { (+) = 1 }",
+		// The extended grammar accepts an operator as a record field
+		// (`f { (+) = 1 }`, the original input of this test), so the
+		// field is a bracketed operator here, which stays an error.
+		"operatorUpdate f = f { [+] = 1 }\n",
+		"operatorUpdate f = f { [+] = 1 }",
 	} {
 		done := make(chan struct{})
 		var tree *gotreesitter.Tree

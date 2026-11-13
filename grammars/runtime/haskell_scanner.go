@@ -94,55 +94,55 @@ const hsTokenCount = 49
 // otherwise-contiguous 108-155 run -- both exactly like blade's "/>" and
 // bash's "\n" externals.
 var hsDefaultSymTable = [hsTokenCount]gotreesitter.Symbol{
-	108, // error_sentinel (FAIL)
-	109, // _cond_layout_semicolon (SEMICOLON)
-	110, // _cmd_layout_start (START)
-	111, // _cmd_layout_start_do (START_DO)
-	112, // _cmd_layout_start_case (START_CASE)
-	113, // _cmd_layout_start_if (START_IF)
-	114, // _cmd_layout_start_let (START_LET)
-	115, // _cmd_layout_start_quote (START_QUOTE)
-	116, // _cmd_layout_start_explicit (START_EXPLICIT, display: "{")
-	117, // _cond_layout_end (END)
-	118, // _cond_layout_end_explicit (END_EXPLICIT, display: "}")
-	119, // _cmd_brace_open (START_BRACE)
-	120, // _cmd_brace_close (END_BRACE)
-	121, // _cmd_texp_start (START_TEXP)
-	122, // _cmd_texp_end (END_TEXP)
-	123, // _phantom_where (WHERE)
-	124, // _phantom_in (IN)
-	125, // _phantom_arrow (ARROW)
-	126, // _phantom_bar (BAR)
-	127, // _phantom_deriving (DERIVING)
-	128, // comment (COMMENT)
-	129, // haddock (HADDOCK)
-	130, // cpp (CPP)
-	131, // pragma (PRAGMA)
-	132, // _cond_quote_start (QQ_START)
-	133, // quasiquote_body (QQ_BODY)
-	134, // _cond_splice (SPLICE)
-	135, // _cond_qual_dot (QUAL_DOT)
-	136, // _cond_tight_dot (TIGHT_DOT)
-	137, // _cond_prefix_dot (PREFIX_DOT)
-	138, // _cond_dotdot (DOTDOT)
-	139, // _cond_tight_at (TIGHT_AT)
-	140, // _cond_prefix_at (PREFIX_AT)
-	141, // _cond_tight_bang (TIGHT_BANG)
-	142, // _cond_prefix_bang (PREFIX_BANG)
-	143, // _cond_tight_tilde (TIGHT_TILDE)
-	144, // _cond_prefix_tilde (PREFIX_TILDE)
-	145, // _cond_prefix_percent (PREFIX_PERCENT)
-	146, // _cond_qualified_op (QUALIFIED_OP)
-	147, // _cond_left_section_op (LEFT_SECTION_OP)
-	148, // _cond_no_section_op (NO_SECTION_OP)
-	149, // _cond_minus (MINUS)
-	150, // _cond_context (CONTEXT)
-	151, // _cond_infix (INFIX)
-	152, // _cond_data_infix (DATA_INFIX)
-	153, // _cond_assoc_tyinst (TYPE_INSTANCE)
-	154, // _varsym (VARSYM)
-	155, // _consym (CONSYM)
-	107, // "\n" pattern (UPDATE, display: _token1)
+	116, // error_sentinel (FAIL)
+	117, // _cond_layout_semicolon (SEMICOLON)
+	118, // _cmd_layout_start (START)
+	119, // _cmd_layout_start_do (START_DO)
+	120, // _cmd_layout_start_case (START_CASE)
+	121, // _cmd_layout_start_if (START_IF)
+	122, // _cmd_layout_start_let (START_LET)
+	123, // _cmd_layout_start_quote (START_QUOTE)
+	124, // _cmd_layout_start_explicit (START_EXPLICIT, display: "{")
+	125, // _cond_layout_end (END)
+	126, // _cond_layout_end_explicit (END_EXPLICIT, display: "}")
+	127, // _cmd_brace_open (START_BRACE)
+	128, // _cmd_brace_close (END_BRACE)
+	129, // _cmd_texp_start (START_TEXP)
+	130, // _cmd_texp_end (END_TEXP)
+	131, // _phantom_where (WHERE)
+	132, // _phantom_in (IN)
+	133, // _phantom_arrow (ARROW)
+	134, // _phantom_bar (BAR)
+	135, // _phantom_deriving (DERIVING)
+	136, // comment (COMMENT)
+	137, // haddock (HADDOCK)
+	138, // cpp (CPP)
+	139, // pragma (PRAGMA)
+	140, // _cond_quote_start (QQ_START)
+	141, // quasiquote_body (QQ_BODY)
+	142, // _cond_splice (SPLICE)
+	143, // _cond_qual_dot (QUAL_DOT)
+	144, // _cond_tight_dot (TIGHT_DOT)
+	145, // _cond_prefix_dot (PREFIX_DOT)
+	146, // _cond_dotdot (DOTDOT)
+	147, // _cond_tight_at (TIGHT_AT)
+	148, // _cond_prefix_at (PREFIX_AT)
+	149, // _cond_tight_bang (TIGHT_BANG)
+	150, // _cond_prefix_bang (PREFIX_BANG)
+	151, // _cond_tight_tilde (TIGHT_TILDE)
+	152, // _cond_prefix_tilde (PREFIX_TILDE)
+	153, // _cond_prefix_percent (PREFIX_PERCENT)
+	154, // _cond_qualified_op (QUALIFIED_OP)
+	155, // _cond_left_section_op (LEFT_SECTION_OP)
+	156, // _cond_no_section_op (NO_SECTION_OP)
+	157, // _cond_minus (MINUS)
+	158, // _cond_context (CONTEXT)
+	159, // _cond_infix (INFIX)
+	160, // _cond_data_infix (DATA_INFIX)
+	161, // _cond_assoc_tyinst (TYPE_INSTANCE)
+	162, // _varsym (VARSYM)
+	163, // _consym (CONSYM)
+	115, // "\n" pattern (UPDATE, display: _token1)
 }
 
 // hsExternalScannerSpec records the source contract for this hand-written
@@ -155,8 +155,8 @@ var hsExternalScannerSpec = ExternalScannerSpec{
 	UpstreamRepo:   "https://github.com/tree-sitter/tree-sitter-haskell",
 	UpstreamCommit: "0975ef72fc3c47b530309ca93937d7d143523628",
 	SourceFiles: []ExternalScannerSourceFile{
-		{Path: "src/grammar.json", SHA256: "509bd0c498d149234296d0cf6a5e93de3320679371ead4ce97d1c266b3102c3e"},
-		{Path: "src/scanner.c", SHA256: "344cd5c8161dbfafdf76438343672e035f20c62d0cbba63fd1e62c730b016c67"},
+		{Path: "src/grammar.json", SHA256: "0f46f28a790b09b85c287fa3a6d2c4615c029ceeaad184facf0a0e53a8f7711b"},
+		{Path: "src/scanner.c", SHA256: "9affd9d3a3d935494043f429c6fde5831cdddc097c75f56444d95bdfc3528bf7"},
 	},
 	Externals: []string{
 		"error_sentinel",
@@ -1007,11 +1007,16 @@ func (env *hsEnv) indentCanStartLayout(sort uint8, indent uint32) bool {
 }
 
 func (env *hsEnv) startLayout(start hsStartLayout, indent uint32) int {
-	if env.inModuleHeader() {
+	// scanner.c start_layout (grammar-ext): the module body can use explicit
+	// braces too (`module A where { ... }`), so the brace is marked in both
+	// cases.
+	header := env.inModuleHeader()
+	if header {
 		env.pop()
-	} else if start.sort == hsBraces {
+	}
+	if start.sort == hsBraces {
 		env.markEnd()
-	} else if !env.indentCanStartLayout(start.sort, indent) {
+	} else if !header && !env.indentCanStartLayout(start.sort, indent) {
 		return hsFAIL
 	}
 	env.pushContext(start.sort, indent)
@@ -1070,6 +1075,13 @@ func (env *hsEnv) endLayoutBrace() int {
 		env.advanceOver(0)
 		env.markEnd()
 		env.pop()
+		// scanner.c end_layout_brace (grammar-ext): this was the closing brace
+		// of an explicit-brace module body. An empty context stack means
+		// "uninitialized", which would start a new top-level layout, so leave
+		// a placeholder that has no layout behavior.
+		if !env.hasContexts() {
+			env.pushContext(hsNoContext, 0)
+		}
 		return hsEND_EXPLICIT
 	}
 	return hsFAIL
@@ -1117,8 +1129,17 @@ func (env *hsEnv) endLayoutDeriving() int {
 
 func (env *hsEnv) layoutsInTexp() bool {
 	if env.isLayoutContext() && len(env.state.contexts) > 1 {
+		// scanner.c layouts_in_texp (grammar-ext): a declaration quote is
+		// closed by its own bracket only, so a tuple expression around the
+		// quote does not end its layout, or a layout nested in it.
+		if env.currentContext() == hsQuoteLayout {
+			return false
+		}
 		for i := len(env.state.contexts) - 2; i >= 0; i-- {
 			s := env.state.contexts[i].sort
+			if s == hsQuoteLayout {
+				return false
+			}
 			if s == hsTExp || s == hsBraces {
 				return true
 			}
@@ -1205,6 +1226,13 @@ func (env *hsEnv) lexSymop() int {
 			}
 			return hsLSymop
 		case '#':
+			// scanner.c lex_symop (grammar-ext): a '#' followed by an identifier
+			// character or a string is an overloaded label, which starts an
+			// expression. As an operator it would end a layout whose first
+			// token is a label (endLayoutInfix).
+			if hsIsIdChar(env.peek1()) || env.char1('"') {
+				return hsLNothing
+			}
 			if env.char1(')') {
 				return hsLUnboxedClose
 			}
@@ -1931,7 +1959,10 @@ func (env *hsEnv) newlineLookahead(nl *hsNewline) {
 					nl.indent = 0
 					nl.eof = true
 					return
-				case hsLThen, hsLElse, hsLSemi:
+				// scanner.c newline_lookahead (grammar-ext): hsLQuoteClose. A
+				// closing quote bracket never starts a layout element, so the
+				// enclosing layout gets no semicolon in front of it.
+				case hsLThen, hsLElse, hsLSemi, hsLQuoteClose:
 					nl.noSemi = true
 					return
 				case hsLBlockComment:
@@ -2116,7 +2147,10 @@ func (env *hsEnv) constraintLookahead() int {
 				state.dataInfix = true
 			}
 			state.infix = true
-			done = !env.valid(hsCONTEXT)
+			// scanner.c constraint_lookahead (grammar-ext): an associated type
+			// instance with an infix head needs TYPE_INSTANCE before INFIX,
+			// so keep looking for the '='.
+			done = !env.valid(hsCONTEXT) && !env.valid(hsTYPE_INSTANCE)
 		case hsCtrEqualsFound:
 			done = !env.valid(hsTYPE_INSTANCE)
 			state.typeInstance = true

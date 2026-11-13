@@ -156,3 +156,66 @@ func TestHaskellAllStacksFailingKeepsErrorTree(t *testing.T) {
 		tree.Release()
 	}
 }
+
+// parseHaskellWithin parses src and fails the test when the parse does not
+// finish within 30 seconds.
+func parseHaskellWithin(t *testing.T, lang *gotreesitter.Language, src string) *gotreesitter.Tree {
+	t.Helper()
+	done := make(chan struct{})
+	var tree *gotreesitter.Tree
+	var err error
+	go func() {
+		defer close(done)
+		tree, err = gotreesitter.NewParser(lang).Parse([]byte(src))
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("%q: parse did not finish within 30s", src)
+	}
+	if err != nil {
+		t.Fatalf("%q: %v", src, err)
+	}
+	return tree
+}
+
+// withoutFinalNewline returns src and, when src ends in a newline, the same
+// input without it.
+func withoutFinalNewline(src string) []string {
+	if n := len(src); n > 0 && src[n-1] == '\n' {
+		return []string{src, src[:n-1]}
+	}
+	return []string{src}
+}
+
+// TestHaskellErrorBeforeRootStaysInTree pins an accepted parse whose error
+// recovery left an ERROR on the stack before the real root. C reports ERROR
+// nodes from the first line on for this input (a stray `)` in a signature).
+// The engine used to stretch the root's range over that ERROR without
+// attaching it: the tree covered the whole source, started with the last
+// expression, and reported no error at all. (The input found in ormolu, an
+// unterminated `"""`, is a valid multiline string in the extended grammar.)
+func TestHaskellErrorBeforeRootStaysInTree(t *testing.T) {
+	entry := grammars.DetectLanguageByName("haskell")
+	if entry == nil {
+		t.Fatal("haskell grammar is not registered")
+	}
+	lang := entry.Language()
+	for _, src := range withoutFinalNewline("main :: IO )\nmain = pure ()\n") {
+		tree := parseHaskellWithin(t, lang, src)
+		root := tree.RootNode()
+		if !root.HasError() {
+			t.Errorf("%q: tree has no error, want one (C reports ERROR): %s", src, root.SExpr(lang))
+		}
+		if root.ChildCount() == 0 {
+			t.Fatalf("%q: root has no children", src)
+		}
+		if got := root.Child(0).StartByte(); got != 0 {
+			t.Errorf("%q: first root child starts at byte %d, want 0: %s", src, got, root.SExpr(lang))
+		}
+		if got, want := root.EndByte(), uint32(len(src)); got != want {
+			t.Errorf("%q: root ends at byte %d, want %d", src, got, want)
+		}
+		tree.Release()
+	}
+}

@@ -1439,8 +1439,49 @@ func attachResultRootExtraSplit(root *Node, split resultRootExtraSplit, arena *n
 	}
 	if split.canFoldVisibleExtras() {
 		foldResultRootExtras(root, split.visibleExtras, arena)
+	} else if outside := resultRootExtrasOutsideSpan(root, split); len(outside) > 0 && resultChildCount(root) > 0 {
+		// An error-bearing extra blocks the ordinary fold above, but an extra
+		// that lies outside the root's own span is not covered by any root
+		// child. Extending the root range over it without attaching it would
+		// drop those bytes, ERROR included, from the published tree: the
+		// tree would cover the whole source yet report no error for input
+		// that tree-sitter C rejects. Attach those extras as root children.
+		// A childless root is left alone: it was reduced over nothing, and
+		// the routes that audit leaf coverage must still see that gap and
+		// decline (TestCompactRouteAcceptedRootLeafCoverageGapDeclines).
+		foldResultRootExtras(root, outside, arena)
+		for _, extra := range outside {
+			if extra.IsError() || extra.HasError() {
+				root.setHasError(true)
+				break
+			}
+		}
 	}
 	extendResultRootRangeToExtras(root, split.allExtras)
+}
+
+// resultRootExtrasOutsideSpan returns the positive-width extras that are
+// visible or are ERROR nodes and end at or before the root's start byte or
+// start at or after its end byte, in source order.
+func resultRootExtrasOutsideSpan(root *Node, split resultRootExtraSplit) []*Node {
+	var outside []*Node
+	visible := 0
+	for _, extra := range split.allExtras {
+		if extra == nil || extra.endByte <= extra.startByte {
+			continue
+		}
+		isVisible := visible < len(split.visibleExtras) && split.visibleExtras[visible] == extra
+		if isVisible {
+			visible++
+		}
+		if !isVisible && !extra.IsError() {
+			continue
+		}
+		if extra.endByte <= root.startByte || extra.startByte >= root.endByte {
+			outside = append(outside, extra)
+		}
+	}
+	return outside
 }
 
 func foldResultRootExtras(root *Node, extras []*Node, arena *nodeArena) {

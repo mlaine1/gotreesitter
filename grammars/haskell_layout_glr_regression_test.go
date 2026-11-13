@@ -219,3 +219,31 @@ func TestHaskellErrorBeforeRootStaysInTree(t *testing.T) {
 		tree.Release()
 	}
 }
+
+// TestHaskellUnusableZeroWidthScannerTokenIsError pins a zero-width scanner
+// token that the only parse version has no action for. After `x <-` at the
+// end of a line, the scanner returns a layout semicolon before `g` that the
+// bind statement's state cannot use. C detects an error there (it recovers
+// with a MISSING expression; Haskell is not on the C recovery port, so the Go
+// tree skips the token inside an empty ERROR instead). The token source used
+// to mask the symbol and rescan without telling the parser, so the tree had
+// no error. (The input found in ormolu, `[d|    foo bar\n|]`, is a valid
+// quote closed in column one in the extended grammar.)
+func TestHaskellUnusableZeroWidthScannerTokenIsError(t *testing.T) {
+	entry := grammars.DetectLanguageByName("haskell")
+	if entry == nil {
+		t.Fatal("haskell grammar is not registered")
+	}
+	lang := entry.Language()
+	for _, src := range withoutFinalNewline("f = do\n    x <-\n    g\n") {
+		tree := parseHaskellWithin(t, lang, src)
+		root := tree.RootNode()
+		if !root.HasError() {
+			t.Errorf("%q: tree has no error, want one (C reports ERROR)", src)
+		}
+		if got, want := root.EndByte(), uint32(len(src)); got != want {
+			t.Errorf("%q: root ends at byte %d, want %d", src, got, want)
+		}
+		tree.Release()
+	}
+}

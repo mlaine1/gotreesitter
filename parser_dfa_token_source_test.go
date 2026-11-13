@@ -1079,6 +1079,108 @@ func (s zeroWidthStateExternalScanner) Scan(payload any, lexer *ExternalLexer, v
 	return true
 }
 
+// skippingZeroWidthExternalScanner skips spaces and then returns a zero-width
+// token, as a layout scanner does at a line start.
+type skippingZeroWidthExternalScanner struct {
+	checkpointByteExternalScanner
+}
+
+func (skippingZeroWidthExternalScanner) Scan(payload any, lexer *ExternalLexer, valid []bool) bool {
+	if len(valid) == 0 || !valid[0] {
+		return false
+	}
+	for lexer.Lookahead() == ' ' {
+		lexer.Advance(true)
+	}
+	lexer.SetResultSymbol(2)
+	return true
+}
+
+// TestNextTokenHandsUnusableZeroWidthExternalToSingleVersion pins what Next
+// does with a zero-width scanner token, read after skipped whitespace, that
+// no live state has an action for. A single parse version receives the
+// token, as in C, so the parser can record the error; the symbol is masked
+// for the next read, which rescans without it. Several versions, and a
+// grammar on the C recovery port, keep the mask-and-rescan inside one read.
+func TestNextTokenHandsUnusableZeroWidthExternalToSingleVersion(t *testing.T) {
+	newSource := func() *dfaTokenSource {
+		lang := &Language{
+			SymbolNames:       []string{"EOF", "/", "layout"},
+			ExternalScanner:   skippingZeroWidthExternalScanner{},
+			ExternalSymbols:   []Symbol{2},
+			ExternalLexStates: [][]bool{{false}, {true}},
+			LexStates: []LexState{
+				{Default: -1, EOF: -1, Transitions: []LexTransition{{Lo: '/', Hi: '/', NextState: 1}}},
+				{AcceptToken: 1, Default: -1, EOF: -1},
+			},
+			LexModes: []LexMode{{}, {ExternalLexState: 1}, {ExternalLexState: 1}},
+		}
+		// The scanner's layout token is valid in the external lex state, but
+		// no parse state has an action for it.
+		lookup := func(state StateID, sym Symbol) uint16 {
+			if (state == 1 || state == 2) && sym == 1 {
+				return 1
+			}
+			return 0
+		}
+		return acquireDFATokenSource(NewLexer(lang.LexStates, []byte(" /")), lang, lookup, nil, nil, nil)
+	}
+
+	t.Run("single version", func(t *testing.T) {
+		ts := newSource()
+		defer ts.Close()
+		ts.SetParserState(1)
+		tok := ts.Next()
+		if tok.Symbol != 2 || tok.StartByte != 1 || tok.EndByte != 1 || !tok.ExternalScannerToken {
+			t.Fatalf("first token = %+v, want the zero-width scanner token at byte 1", tok)
+		}
+		if !ts.handedOverUnusableZeroWidthExternal(tok, 1) {
+			t.Fatal("the token source did not record the token it handed over")
+		}
+		if ts.handedOverUnusableZeroWidthExternal(tok, 2) {
+			t.Fatal("the hand-over record matched another parse state")
+		}
+		next := ts.Next()
+		if next.Symbol != 1 || next.StartByte != 1 || next.EndByte != 2 {
+			t.Fatalf("second token = %+v, want the DFA token at byte 1", next)
+		}
+		if ts.handedOverUnusableZeroWidthExternal(tok, 1) {
+			t.Fatal("the hand-over record outlived the next read")
+		}
+		if eof := ts.Next(); eof.Symbol != 0 || eof.StartByte != 2 {
+			t.Fatalf("third token = %+v, want EOF at byte 2", eof)
+		}
+	})
+
+	t.Run("several versions", func(t *testing.T) {
+		ts := newSource()
+		defer ts.Close()
+		ts.SetParserState(1)
+		ts.SetGLRStates([]StateID{1, 2})
+		tok := ts.Next()
+		if tok.Symbol != 1 || tok.StartByte != 1 || tok.EndByte != 2 {
+			t.Fatalf("first token = %+v, want the DFA token at byte 1", tok)
+		}
+		if ts.handedOverUnusableZeroWidthExternal(tok, 1) {
+			t.Fatal("a multi-version read recorded a hand-over")
+		}
+	})
+
+	t.Run("C recovery port", func(t *testing.T) {
+		ts := newSource()
+		defer ts.Close()
+		ts.cRecoveryEnabled = true
+		ts.SetParserState(1)
+		tok := ts.Next()
+		if tok.Symbol != 1 || tok.StartByte != 1 || tok.EndByte != 2 {
+			t.Fatalf("first token = %+v, want the DFA token at byte 1", tok)
+		}
+		if ts.handedOverUnusableZeroWidthExternal(tok, 1) {
+			t.Fatal("a read for the C recovery port recorded a hand-over")
+		}
+	})
+}
+
 func TestNextTokenPreservesZeroWidthExternalMarkers(t *testing.T) {
 	for _, transition := range []bool{false, true} {
 		name := "unchanged-marker"

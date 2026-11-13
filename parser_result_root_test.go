@@ -45,6 +45,61 @@ func TestAttachResultRootExtraSplitOmitsZeroWidthChildren(t *testing.T) {
 	}
 }
 
+// TestAttachResultRootExtraSplitKeepsErrorExtraOutsideRootSpan pins an ERROR
+// extra that lies before the real root. An error-bearing extra blocks the
+// ordinary fold of visible extras, and the root's range used to be stretched
+// over the ERROR without attaching it, so the tree lost the node and its
+// error.
+func TestAttachResultRootExtraSplitKeepsErrorExtraOutsideRootSpan(t *testing.T) {
+	lang := &Language{
+		SymbolNames: []string{"EOF", "source_file", "comment"},
+		SymbolMetadata: []SymbolMetadata{
+			{Name: "EOF"},
+			{Name: "source_file", Visible: true, Named: true},
+			{Name: "comment", Visible: true, Named: true},
+		},
+	}
+	arena := acquireNodeArena(arenaClassFull)
+	defer arena.Release()
+
+	child := newLeafNodeInArena(arena, 1, true, 4, 6, Point{Column: 4}, Point{Column: 6})
+	root := newParentNodeInArena(arena, 1, true, []*Node{child}, nil, 0)
+	errExtra := newLeafNodeInArena(arena, errorSymbol, true, 0, 3, Point{}, Point{Column: 3})
+	errExtra.setExtra(true)
+	errExtra.setHasError(true)
+	comment := newLeafNodeInArena(arena, 2, true, 3, 4, Point{Column: 3}, Point{Column: 4})
+	comment.setExtra(true)
+	hidden := newLeafNodeInArena(arena, 0, false, 6, 7, Point{Column: 6}, Point{Column: 7})
+	hidden.setExtra(true)
+
+	split := classifyResultRootExtras([]*Node{errExtra, comment, hidden}, lang)
+	attachResultRootExtraSplit(root, split, arena)
+
+	children := resultChildSliceForMutation(root)
+	if len(children) != 3 || children[0] != errExtra || children[1] != comment || children[2] != child {
+		t.Fatalf("attached root children=%+v, want the ERROR, the comment and the child", children)
+	}
+	if !root.hasError() {
+		t.Fatal("root has no error after an ERROR extra was attached")
+	}
+	if root.startByte != 0 || root.endByte != 7 {
+		t.Fatalf("attached root span=%d..%d, want 0..7", root.startByte, root.endByte)
+	}
+
+	// A childless root keeps the old treatment: its range covers the ERROR,
+	// and the ERROR is not attached.
+	hollow := newParentNodeInArena(arena, 1, true, nil, nil, 0)
+	hollow.startByte, hollow.endByte = 4, 4
+	hollow.startPoint, hollow.endPoint = Point{Column: 4}, Point{Column: 4}
+	attachResultRootExtraSplit(hollow, classifyResultRootExtras([]*Node{errExtra}, lang), arena)
+	if n := resultChildCount(hollow); n != 0 {
+		t.Fatalf("childless root gained %d children", n)
+	}
+	if hollow.startByte != 0 || hollow.endByte != 4 {
+		t.Fatalf("childless root span=%d..%d, want 0..4", hollow.startByte, hollow.endByte)
+	}
+}
+
 func TestAttachResultRootExtraSplitOmitsZeroWidthFinalRefsWithoutDrain(t *testing.T) {
 	lang := &Language{
 		SymbolNames: []string{"EOF", "source_file", "declaration", "comment"},

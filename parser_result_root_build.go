@@ -210,7 +210,35 @@ func (b *resultRootBuild) tryBuildRealRootTree(nodes []*Node) *Tree {
 		return nil
 	}
 	realRoot = flattenInvisibleRootChildren(realRoot, b.arena, b.lang)
-	return b.finishTree(realRoot, b.shouldWireParentLinks, extendTrailing)
+	tree := b.finishTree(realRoot, b.shouldWireParentLinks, extendTrailing)
+	restoreRootStartAtLeadingZeroWidthScannerExtra(tree, extraSplit, b.source)
+	return tree
+}
+
+// restoreRootStartAtLeadingZeroWidthScannerExtra moves the root start back to
+// a zero-width external-scanner extra that precedes the first source byte
+// that is not whitespace. In C the root's padding is its first leaf's padding
+// (ts_subtree_summarize_children, C/subtree.c), and a zero-width leaf counts:
+// when the scanner emits one before it skips the leading whitespace, the root
+// starts at that leaf, not at the first visible token. The extra is hidden
+// and never becomes a root child here, so normalizeRootSourceStart sees no
+// retained child that owns the prefix and snaps the root forward (haskell: a
+// file that opens with indented comments has its root at 1:1 in C).
+func restoreRootStartAtLeadingZeroWidthScannerExtra(tree *Tree, split resultRootExtraSplit, source []byte) {
+	if tree == nil || tree.root == nil || len(split.allExtras) == 0 {
+		return
+	}
+	lead := split.allExtras[0]
+	if lead == nil || lead.endByte != lead.startByte || !lead.hasFlag(nodeFlagExternalScannerToken) {
+		return
+	}
+	root := tree.root
+	firstSource := firstNonTriviaByteStart(source)
+	if lead.startByte >= firstSource || root.startByte != firstSource {
+		return
+	}
+	root.startByte = lead.startByte
+	root.startPoint = lead.startPoint
 }
 
 func (b *resultRootBuild) buildSyntheticRootTree(nodes []*Node) *Tree {

@@ -253,3 +253,50 @@ func TestHaskellUnusableZeroWidthScannerTokenIsError(t *testing.T) {
 		tree.Release()
 	}
 }
+
+// TestHaskellRootStartsAtLeadingZeroWidthScannerToken pins the root's start
+// position, which C takes from the first leaf, hidden and zero-width leaves
+// included. Before a leading comment the scanner emits a zero-width token at
+// the first byte, ahead of the whitespace it then skips, so the root starts
+// there. Before a leading declaration the scanner skips the whitespace
+// first, and the root starts at the declaration. The engine used to start
+// the root at the comment. Each want is the C position.
+func TestHaskellRootStartsAtLeadingZeroWidthScannerToken(t *testing.T) {
+	entry := grammars.DetectLanguageByName("haskell")
+	if entry == nil {
+		t.Fatal("haskell grammar is not registered")
+	}
+	lang := entry.Language()
+	for _, tc := range []struct {
+		name, source string
+		wantByte     uint32
+		wantPoint    gotreesitter.Point
+	}{
+		{name: "indented block comment", source: "  {- a -}\nfoo=bar\n"},
+		{name: "indented line comment", source: "  -- a\nfoo=bar\n"},
+		{name: "blank lines then indented comment", source: "\n\n  {- a -}\n\nfoo=bar\n"},
+		{name: "comment only", source: "  {- a -}\n"},
+		{name: "indented declaration", source: "  foo=bar\n", wantByte: 2, wantPoint: gotreesitter.Point{Column: 2}},
+		{name: "comment at first byte", source: "{- a -}\nfoo=bar\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, src := range withoutFinalNewline(tc.source) {
+				tree := parseHaskellWithin(t, lang, src)
+				root := tree.RootNode()
+				if root.HasError() {
+					t.Errorf("%q: unexpected parse error: %s", src, root.SExpr(lang))
+				}
+				if got := root.StartByte(); got != tc.wantByte {
+					t.Errorf("%q: root starts at byte %d, want %d", src, got, tc.wantByte)
+				}
+				if got := root.StartPoint(); got != tc.wantPoint {
+					t.Errorf("%q: root starts at %+v, want %+v", src, got, tc.wantPoint)
+				}
+				if got, want := root.EndByte(), uint32(len(src)); got != want {
+					t.Errorf("%q: root ends at byte %d, want %d", src, got, want)
+				}
+				tree.Release()
+			}
+		})
+	}
+}

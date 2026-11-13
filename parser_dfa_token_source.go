@@ -1052,6 +1052,21 @@ func (d *dfaTokenSource) preferGLRUnionDFAOverExternalToken(extTok Token, extEnd
 		}
 	}
 	if dfaSupport == extSupport {
+		// C lexes each version on its own and runs the external scanner
+		// before the internal lexer (ts_parser__lex, C/parser.c): a version
+		// whose state accepts the scanner's token never reads the internal
+		// one. With equal support and no state that accepts the DFA token
+		// alone, the two tokens are accepted by the same states, so no
+		// version in C would read the DFA token and it cannot displace the
+		// scanner's answer (haskell `(a\n *> b)`: the scanner's `*>`
+		// operator against the DFA `*`).
+		if !d.hasGLRActionSupportExclusiveTo(dfaTok.Symbol, extTok.Symbol) {
+			if DebugDFA.Load() {
+				fmt.Printf("  GLR ext/dfa keep external: the same states accept ext=%s(%d) and dfa=%s(%d)\n",
+					d.symbolName(extTok.Symbol), extTok.Symbol, d.symbolName(dfaTok.Symbol), dfaTok.Symbol)
+			}
+			return Token{}, 0, 0, 0, false
+		}
 		hasSpecificBranch := d.hasGLRActionSupportExclusiveTo(dfaTok.Symbol, extTok.Symbol) ||
 			d.hasGLRActionSupportForBoth(dfaTok.Symbol, extTok.Symbol)
 		if dfaSpecificity <= extSpecificity || !hasSpecificBranch {

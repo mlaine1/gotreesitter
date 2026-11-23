@@ -1524,6 +1524,10 @@ func (p *Parser) tryResyncErrorRecoveryMode(source []byte, s *glrStack, tok Toke
 	gotoState := recoverState
 	for preservedEnd < len(poppedNodes) {
 		n := poppedNodes[preservedEnd]
+		if resyncPreservesExtraSibling(n) {
+			preservedEnd++
+			continue
+		}
 		next := p.lookupGoto(gotoState, n.symbol)
 		if next == 0 {
 			break
@@ -1577,10 +1581,18 @@ func (p *Parser) tryResyncErrorRecoveryMode(source []byte, s *glrStack, tok Toke
 			pushState := recoverState
 			for i := 0; i < preservedEnd; i++ {
 				n := poppedNodes[i]
+				if resyncPreservesExtraSibling(n) {
+					p.pushStackNode(s, pushState, n, entryScratch, gssScratch)
+					continue
+				}
 				next := p.lookupGoto(pushState, n.symbol)
 				if next == 0 {
 					return resyncNone
 				}
+				// A GOTO-validated sibling is a real top-level child: drop
+				// any provisional extra mark tryReplayTopLevelRecovery left,
+				// or later reduces skip it as an extra and the stack dies.
+				n.clearRecoveryPlaceholderExtra()
 				n.preGotoState = pushState
 				n.parseState = next
 				nodeBumpEquivVersionMetadata(n)
@@ -1686,11 +1698,17 @@ func (p *Parser) tryResyncErrorRecoveryMode(source []byte, s *glrStack, tok Toke
 	pushState := recoverState
 	for i := 0; i < preservedEnd; i++ {
 		n := poppedNodes[i]
+		if resyncPreservesExtraSibling(n) {
+			p.pushStackNode(s, pushState, n, entryScratch, gssScratch)
+			continue
+		}
 		next := p.lookupGoto(pushState, n.symbol)
 		if next == 0 {
 			// Defensive: should not happen given the preservation loop above.
 			return resyncNone
 		}
+		// See the identical clear in the recovered-suffix branch above.
+		n.clearRecoveryPlaceholderExtra()
 		n.preGotoState = pushState
 		n.parseState = next
 		nodeBumpEquivVersionMetadata(n)
@@ -1711,6 +1729,18 @@ func (p *Parser) tryResyncErrorRecoveryMode(source []byte, s *glrStack, tok Toke
 			tok.Symbol, status, recoverState, preservedEnd, len(errChildren), s.depth())
 	}
 	return status
+}
+
+// resyncPreservesExtraSibling reports whether a popped node is a genuine extra
+// (a comment, or the extra ERROR an earlier resync built) that the top-level
+// resync keeps as a preserved sibling. An extra takes no GOTO: it sits on the
+// stack in the state it was pushed in, as C keeps extras and earlier ERRORs
+// beside the statements around them. Without this, a comment or an earlier
+// ERROR at the bottom of the popped span ended the preserved run at zero, so
+// the new ERROR swallowed every completed statement above it. A provisional
+// extra mark from tryReplayTopLevelRecovery is not a genuine extra.
+func resyncPreservesExtraSibling(n *Node) bool {
+	return n != nil && n.isExtra() && !n.isRecoveryPlaceholderExtra()
 }
 
 func (p *Parser) rebuildAliasPrefixedRecoveredSuffix(source []byte, state StateID, suffix []*Node, lookahead Symbol, arena *nodeArena) (*Node, StateID, bool) {

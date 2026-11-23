@@ -438,8 +438,10 @@ func TestInjectionParseEmptySpanDoesNotReuseTree(t *testing.T) {
 const retryStopPythonSource = "def f(:\n  x = [1,2\n  return )\nclass :\n"
 
 // retryStopFallbackSource runs retry passes even with C-style recovery off,
-// which is how the swallowed-error fallback parses.
-const retryStopFallbackSource = "int f( { int a = ; return ) }\nstruct { int x }\n"
+// which is how the swallowed-error fallback parses. The two constructs share a
+// line: with a newline between them, the top-level resync keeps the earlier
+// ERROR as a sibling and the fallback no longer needs the wide recovery pass.
+const retryStopFallbackSource = "int f( { int a = ; return ) } struct { int x }\n"
 
 type retryStopObservation struct {
 	rungs       []string

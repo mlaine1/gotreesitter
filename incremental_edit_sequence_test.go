@@ -443,6 +443,13 @@ const retryStopPythonSource = "def f(:\n  x = [1,2\n  return )\nclass :\n"
 // ERROR as a sibling and the fallback no longer needs the wide recovery pass.
 const retryStopFallbackSource = "int f( { int a = ; return ) } struct { int x }\n"
 
+// retryStopWideFallbackSource makes the swallowed-error fallback run the
+// recovery_wide_or_node pass. Once a skipped byte after a resync ERROR got
+// its own ERROR instead of killing the stack, retryStopFallbackSource no
+// longer needs that pass; this unterminated string with a broken escape at
+// the end of input (reduced from a mutated corpus file) still does.
+const retryStopWideFallbackSource = "class e:\n \"\\u"
+
 type retryStopObservation struct {
 	rungs       []string
 	stop        gts.ParseStopReason
@@ -1006,7 +1013,7 @@ func TestRetryStopReasonSwallowedErrorFallbackRejected(t *testing.T) {
 	p.SetCancellationFlag(&flag)
 	gts.SetRetryPassObserverForTests(p, rec.observe)
 	got := gts.RetryCutOperationForTests(p, func() *gts.Tree {
-		return gts.ResolveSwallowedErrorForTests(p, []byte(retryStopFallbackSource), clean)
+		return gts.ResolveSwallowedErrorForTests(p, []byte(retryStopWideFallbackSource), clean)
 	})
 	if got != clean {
 		t.Fatalf("fallback was adopted; the test needs a rejected fallback (passes %v, flag %d)", rec.passes(), atomic.LoadUint32(&flag))

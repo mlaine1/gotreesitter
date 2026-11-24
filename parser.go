@@ -4648,12 +4648,21 @@ func (p *Parser) tryMaterializeSkippedRealGap(source []byte, s *glrStack, state 
 		// plain-token ERROR wrapper (see its doc), not just the legacy
 		// childless leaf, so a region already carrying absorbed real tokens
 		// still absorbs this skipped gap instead of stopping here.
-		if !errorNodeOpenForAbsorption(top) ||
-			top.parseState != state ||
-			top.endByte != s.byteOffset {
+		if top.endByte != s.byteOffset {
 			return false
 		}
-		startPoint = top.endPoint
+		if errorNodeOpenForAbsorption(top) {
+			if top.parseState != state {
+				return false
+			}
+			startPoint = top.endPoint
+		}
+		// A closed ERROR (one a resync built around popped subtrees) cannot
+		// absorb the gap, but the gap still needs a node: refusing here left
+		// the caller to kill the only stack, so the parse ended at the
+		// skipped byte and the tree stopped short of the source. C gives the
+		// skipped bytes their own error subtree beside the earlier one;
+		// pushOrExtendErrorNode pushes a new ERROR when the top is closed.
 	}
 	gapTok := Token{
 		Symbol:     errorSymbol,
@@ -6780,6 +6789,20 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					actionTiming.actionNoActionNanos += ns
 					recordActionTiming(currentState, tok.Symbol, actions, ambiguityActionNoAction, ns)
 					return ns
+				}
+				// EOF can follow bytes the lexer skipped because no token of this
+				// state's lex mode starts there. With an accept action the
+				// accept branch below covers them (recoveredSkippedEOF); with no
+				// action the EOF recovery that follows pops back to an accepting
+				// state and never covers bytes past the stack's end, so the tree
+				// ended before the source. Cover the gap first, as the shift
+				// path does, then retry the lookahead.
+				if dispatchVersionCount == 1 && tok.Symbol == 0 && tok.StartByte == tok.EndByte && !tok.NoLookahead &&
+					tok.StartByte > s.byteOffset &&
+					p.tryMaterializeSkippedRealGap(source, s, currentState, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, trackChildErrors) {
+					anyReduced = true
+					needToken = false
+					goto retryAction
 				}
 				sameState := parseStacksShareState(stacks, currentState)
 				// Retirement of a per-language patch: this relex was gated to

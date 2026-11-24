@@ -1467,16 +1467,19 @@ func attachResultRootExtraSplit(root *Node, split resultRootExtraSplit, arena *n
 	}
 	if split.canFoldVisibleExtras() {
 		foldResultRootExtras(root, split.visibleExtras, arena)
-	} else if outside := resultRootExtrasOutsideSpan(root, split); len(outside) > 0 && resultChildCount(root) > 0 {
+	} else if outside := resultRootExtrasOutsideSpan(root, split); len(outside) > 0 {
 		// An error-bearing extra blocks the ordinary fold above, but an extra
 		// that lies outside the root's own span is not covered by any root
 		// child. Extending the root range over it without attaching it would
 		// drop those bytes, ERROR included, from the published tree: the
 		// tree would cover the whole source yet report no error for input
-		// that tree-sitter C rejects. Attach those extras as root children.
-		// A childless root is left alone: it was reduced over nothing, and
-		// the routes that audit leaf coverage must still see that gap and
-		// decline (TestCompactRouteAcceptedRootLeafCoverageGapDeclines).
+		// that tree-sitter C rejects. Attach those extras as root children,
+		// a childless root included: an EOF reduce of the root over nothing,
+		// on top of recovered ERROR extras, otherwise published an empty,
+		// error-free root spanning the whole source. C's ts_parser__accept
+		// splices every extra into the root. The leaf-coverage audits still
+		// refuse a root with no leaf under it
+		// (TestCompactRouteLeafCoverageAuditRefusesHollowRoot).
 		foldResultRootExtras(root, outside, arena)
 		for _, extra := range outside {
 			if extra.IsError() || extra.HasError() {

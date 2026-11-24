@@ -86,14 +86,18 @@ func TestAttachResultRootExtraSplitKeepsErrorExtraOutsideRootSpan(t *testing.T) 
 		t.Fatalf("attached root span=%d..%d, want 0..7", root.startByte, root.endByte)
 	}
 
-	// A childless root keeps the old treatment: its range covers the ERROR,
-	// and the ERROR is not attached.
+	// A childless root gets the ERROR too. Leaving it unattached while the
+	// range grew over it published an empty, error-free root for input C
+	// rejects; C's ts_parser__accept splices every extra into the root.
 	hollow := newParentNodeInArena(arena, 1, true, nil, nil, 0)
 	hollow.startByte, hollow.endByte = 4, 4
 	hollow.startPoint, hollow.endPoint = Point{Column: 4}, Point{Column: 4}
 	attachResultRootExtraSplit(hollow, classifyResultRootExtras([]*Node{errExtra}, lang), arena)
-	if n := resultChildCount(hollow); n != 0 {
-		t.Fatalf("childless root gained %d children", n)
+	if kids := resultChildSliceForMutation(hollow); len(kids) != 1 || kids[0] != errExtra {
+		t.Fatalf("childless root children=%+v, want the ERROR", kids)
+	}
+	if !hollow.hasError() {
+		t.Fatal("childless root has no error after an ERROR extra was attached")
 	}
 	if hollow.startByte != 0 || hollow.endByte != 4 {
 		t.Fatalf("childless root span=%d..%d, want 0..4", hollow.startByte, hollow.endByte)

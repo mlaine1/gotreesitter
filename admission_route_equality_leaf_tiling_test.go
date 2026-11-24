@@ -394,7 +394,7 @@ func routeEqualityTreeContainsMissing(node *gts.Node) bool {
 	return false
 }
 
-// TestCompactRouteAcceptedRootLeafCoverageGapDeclines pins the adversarial
+// TestCompactRouteChildlessRootServesAttachedErrors started as the pin of the adversarial
 // review finding against B3 stage S3's first shipped revision: html
 // "<!--c-->>" (9 bytes) reduced the compact route's accepted root over zero
 // real children (a hollow "document[0:9]"), and the tiling audit of the era
@@ -411,10 +411,16 @@ func routeEqualityTreeContainsMissing(node *gts.Node) bool {
 // bytes.
 //
 // Each case here absorbed a comment and a stray '>' (or more) into an S3
-// error region and then reduced "document" over nothing; every one must now
-// decline and fall back to production, which reports the correct
-// ERROR-wrapped, HasError=true tree for all five.
-func TestCompactRouteAcceptedRootLeafCoverageGapDeclines(t *testing.T) {
+// error region and then reduced "document" over nothing. The result builder
+// used to leave a childless root's ERROR extras unattached and only stretch
+// the root's range over them, so the compact route published a hollow
+// document and had to decline here. It now attaches them, as C's
+// ts_parser__accept splices every extra into the root
+// (attachResultRootExtraSplit), so the compact tree tiles the source with
+// real leaves, equals production, and is served. The audit itself keeps
+// refusing a genuinely hollow root
+// (TestCompactRouteLeafCoverageAuditRefusesHollowRoot).
+func TestCompactRouteChildlessRootServesAttachedErrors(t *testing.T) {
 	t.Cleanup(func() { grammars.PurgeEmbeddedLanguageCache() })
 	entry := grammars.DetectLanguageByName("html")
 	if entry == nil {
@@ -454,19 +460,38 @@ func TestCompactRouteAcceptedRootLeafCoverageGapDeclines(t *testing.T) {
 			}
 			defer candidateTree.Release()
 
-			routed, fallback := gts.AdmissionCandidateCounters()
-			if routed != 0 || fallback != 1 {
-				t.Fatalf("%q: route counters routed=%d fallback=%d, want routed=0 fallback=1 (root leaf-coverage gap must decline)", src, routed, fallback)
+			if routed, fallback := gts.AdmissionCandidateCounters(); routed != 1 || fallback != 0 {
+				t.Fatalf("%q: route counters routed=%d fallback=%d, want routed=1 fallback=0 (no coverage gap remains); fallback reason=%q",
+					src, routed, fallback, gts.AdmissionCandidateLastFallbackReason())
 			}
-			reason := gts.AdmissionCandidateLastFallbackReason()
-			if !strings.Contains(reason, "do not tile the accepted span") {
-				t.Fatalf("%q: fallback reason=%q, want it to cite the root leaf-coverage gap", src, reason)
+			root := candidateTree.RootNode()
+			if !root.HasError() {
+				t.Fatalf("%q: served HasError=false, want true", src)
 			}
-
-			if !candidateTree.RootNode().HasError() {
-				t.Fatalf("%q: production-served HasError=false, want true", src)
+			if root.StartByte() != 0 || root.EndByte() != uint32(len(source)) {
+				t.Fatalf("%q: served root span=%d..%d, want 0..%d", src, root.StartByte(), root.EndByte(), len(source))
 			}
-			if got, want := candidateTree.RootNode().SExpr(lang), productionTree.RootNode().SExpr(lang); got != want {
+			covered := make([]bool, len(source))
+			var walk func(n *gts.Node)
+			walk = func(n *gts.Node) {
+				kids := n.Children()
+				if len(kids) == 0 {
+					for i := n.StartByte(); i < n.EndByte() && int(i) < len(source); i++ {
+						covered[i] = true
+					}
+					return
+				}
+				for _, ch := range kids {
+					walk(ch)
+				}
+			}
+			walk(root)
+			for i, b := range source {
+				if !covered[i] && b != ' ' {
+					t.Fatalf("%q: byte %d (%q) is in no leaf of the served tree: %s", src, i, b, root.SExpr(lang))
+				}
+			}
+			if got, want := root.SExpr(lang), productionTree.RootNode().SExpr(lang); got != want {
 				t.Fatalf("%q: served tree diverges from production\n got:  %s\n want: %s", src, got, want)
 			}
 		})

@@ -332,3 +332,27 @@ func TestDiagnosticParserCoreAcceptedLeafCoveragePollsLongTrivia(t *testing.T) {
 		t.Fatalf("poll count=%d, want bounded trivia polling", polls)
 	}
 }
+
+// The compact route's public-tree leaf-coverage audit must keep refusing a
+// root that was reduced over nothing: such a root covers the source by span
+// only, with no leaf under it. The result builder now attaches a childless
+// root's recovered ERROR extras (as C's ts_parser__accept does), so the HTML
+// inputs of TestCompactRouteChildlessRootServesAttachedErrors no longer reach
+// the audit hollow; this pins the audit itself on a hollow root.
+func TestCompactRouteLeafCoverageAuditRefusesHollowRoot(t *testing.T) {
+	source := []byte("<!--c-->>")
+	arena := acquireNodeArena(arenaClassFull)
+	defer arena.Release()
+	hollow := newParentNodeInArena(arena, 1, true, nil, nil, 0)
+	hollow.startByte, hollow.endByte = 0, uint32(len(source))
+	hollow.startPoint, hollow.endPoint = Point{}, Point{Column: uint32(len(source))}
+
+	var coverage diagnosticParserCoreAcceptedLeafCoverageScratch
+	gapStart, gapEnd, gapped, err := diagnosticParserCoreAcceptedTreeLeafCoverageGap(hollow, source, 0, uint32(len(source)), 0, &coverage, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gapped || gapStart != 0 || gapEnd != uint32(len(source)) {
+		t.Fatalf("hollow root audit: gapped=%v gap=%d..%d, want the whole source 0..%d", gapped, gapStart, gapEnd, len(source))
+	}
+}
